@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
     const string Repo = "Pinkel-Kinkel/hit-recordings";
 
     static readonly string AppDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -28,7 +28,8 @@ partial class HitStudent : Form
     {
         { "moodle", "https://md.hit.ac.il/my/" },
         { "portal", "https://portal.hit.ac.il/" },
-        { "cs24", "https://cs24.co.il/drive?d=e47d12" }
+        { "cs24", "https://cs24.co.il/drive?d=e47d12" },
+        { "notability", "https://notability.com/" }
     };
 
     // "ui" is the app itself. "zoom" and "moodle" are hidden browsers that share one sign-in profile and only
@@ -87,6 +88,9 @@ partial class HitStudent : Form
         ui.BringToFront();
 
         if (selfTest) { WindowState = FormWindowState.Minimized; ShowInTaskbar = false; }
+        HandleCreated += delegate { ApplyTitleBarTheme(); };
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)ApplyTitleBarTheme); };
+        CleanUpOldFiles();
         Load += async delegate { await InitAsync(); };
         Activated += delegate { CheckClipboard(false); };
         FormClosing += delegate { foreach (var p in aiRuns.Values.ToList()) KillTree(p); };
@@ -198,6 +202,56 @@ partial class HitStudent : Form
             settings["recordingsDir"] = dir.Length > 0 ? dir : (hasD ? @"D:\HIT\Zoom Recordings" : Path.Combine(docs, "HIT Recordings"));
         }
         if (Str(settings, "aiProvider").Length == 0) settings["aiProvider"] = "claude";
+        foreach (string opt in new[] { "autoSync", "autoRecordings", "autoUpdate" })
+            if (!settings.ContainsKey(opt)) settings[opt] = true;
+    }
+
+    bool Option(string name) { return Bool(settings, name); }
+
+    // ---------- Title bar in the app's colours (Windows 11 draws it for us) ----------
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    static bool SystemUsesLightTheme()
+    {
+        try
+        {
+            object v = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1);
+            return v is int && (int)v != 0;
+        }
+        catch { return false; }
+    }
+
+    // "system" (default), "light" or "dark", chosen in the app.
+    bool LightTheme
+    {
+        get
+        {
+            string t = Str(settings, "theme");
+            return t == "light" || (t != "dark" && SystemUsesLightTheme());
+        }
+    }
+
+    void ApplyTitleBarTheme()
+    {
+        bool light = LightTheme;
+        Color bg = light ? Color.FromArgb(244, 245, 251) : Color.FromArgb(13, 15, 23);
+        Color fg = light ? Color.FromArgb(21, 24, 38) : Color.FromArgb(238, 240, 248);
+        BackColor = bg;
+        if (ui != null) ui.DefaultBackgroundColor = bg;
+        try
+        {
+            int dark = light ? 0 : 1;
+            DwmSetWindowAttribute(Handle, 20, ref dark, 4);                          // DWMWA_USE_IMMERSIVE_DARK_MODE
+            int caption = bg.R | (bg.G << 8) | (bg.B << 16);
+            DwmSetWindowAttribute(Handle, 35, ref caption, 4);                       // DWMWA_CAPTION_COLOR
+            int text = fg.R | (fg.G << 8) | (fg.B << 16);
+            DwmSetWindowAttribute(Handle, 36, ref text, 4);                          // DWMWA_TEXT_COLOR
+            int border = caption;
+            DwmSetWindowAttribute(Handle, 34, ref border, 4);                        // DWMWA_BORDER_COLOR
+        }
+        catch { }
     }
 
     void SaveSettings()
@@ -216,7 +270,9 @@ partial class HitStudent : Form
         {
             type = "settings", studyRoot = StudyRoot, recordingsDir = RecordingsDir, notabilityDir = NotabilityDir,
             aiProvider = Provider, hasGeminiKey = Str(settings, "geminiKey").Length > 0,
-            onboarded = Bool(settings, "onboarded"), userName = Str(settings, "userName"), version = Version
+            onboarded = Bool(settings, "onboarded"), userName = Str(settings, "userName"), version = Version,
+            autoSync = Option("autoSync"), autoRecordings = Option("autoRecordings"), autoUpdate = Option("autoUpdate"),
+            theme = Str(settings, "theme").Length > 0 ? Str(settings, "theme") : "system", systemLight = SystemUsesLightTheme()
         });
     }
 
@@ -258,6 +314,27 @@ partial class HitStudent : Form
                 SendSettings();
                 break;
             case "checkStatus": var ignored2 = PollStatus(true); break;
+            case "setOption":
+                string opt = Str(m, "name");
+                if (opt == "autoSync" || opt == "autoRecordings" || opt == "autoUpdate") { settings[opt] = Bool(m, "value"); SaveSettings(); SendSettings(); }
+                if (opt == "theme")
+                {
+                    string t = Str(m, "value");
+                    settings["theme"] = t == "light" || t == "dark" ? t : "system";
+                    SaveSettings();
+                    ApplyTitleBarTheme();
+                    SendSettings();
+                }
+                break;
+            case "installUpdate": InstallUpdate(); break;
+            case "restartForUpdate": RestartIntoUpdate(); break;
+            case "addRecording":
+                string rec = Str(m, "url").Trim();
+                if (!IsZoomUrl(rec)) { Toast("×–×” ×œ× ×§×™×©×•×¨ ×œ×”×§×œ×˜×ª Zoom", true); return; }
+                if (!QueueRecording(course, Int(m, "num"), rec, true)) Toast("×”×”×§×œ×˜×” ×”×–×• ×›×‘×¨ ×‘×”×•×¨×“×” ××• ×”×•×¨×“×”", false);
+                break;
+            case "homework": Homework(course, Int(m, "num"), Str(m, "title")); break;
+            case "learnCourse": LearnCourse(course, m["sections"] as System.Collections.ArrayList); break;
 
             // AI
             case "setProvider":
@@ -268,6 +345,7 @@ partial class HitStudent : Form
                 break;
             case "setupClaude": SetupClaude(); break;
             case "setupGemini": SetupGemini(); break;
+            case "loginGemini": LoginGemini(); break;
             case "setGeminiKey":
                 settings["geminiKey"] = Protect(Str(m, "key").Trim());
                 SaveSettings();
@@ -438,6 +516,13 @@ partial class HitStudent : Form
         finally { polling = false; }
     }
 
+    // ---------- Updates ----------
+    // Each GitHub release carries HIT-Student.zip and HIT-Student.zip.sha256. The app downloads both, checks the hash,
+    // swaps its own files (a running .exe/.dll can be renamed, so the old ones become *.old) and restarts.
+
+    string updateVersion, updateZipUrl, updateShaUrl, updatePage, stagedUpdateDir;
+    bool updating;
+
     async void CheckForUpdate()
     {
         try
@@ -449,10 +534,98 @@ partial class HitStudent : Form
                 var rel = json.Deserialize<Dictionary<string, object>>(body);
                 string tag = Str(rel, "tag_name").TrimStart('v');
                 System.Version latest, mine;
-                if (System.Version.TryParse(tag, out latest) && System.Version.TryParse(Version, out mine) && latest > mine)
-                    Send(new { type = "update", version = tag, url = Str(rel, "html_url") });
+                if (!System.Version.TryParse(tag, out latest) || !System.Version.TryParse(Version, out mine) || latest <= mine) return;
+                updateVersion = tag;
+                updatePage = Str(rel, "html_url");
+                updateZipUrl = updateShaUrl = null;
+                string prefix = "https://github.com/" + Repo + "/releases/download/";
+                foreach (Dictionary<string, object> a in (rel["assets"] as System.Collections.ArrayList ?? new System.Collections.ArrayList()))
+                {
+                    string url = Str(a, "browser_download_url");
+                    if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Str(a, "name") == "HIT-Student.zip") updateZipUrl = url;
+                    if (Str(a, "name") == "HIT-Student.zip.sha256") updateShaUrl = url;
+                }
+                bool canAuto = updateZipUrl != null && updateShaUrl != null;
+                Send(new { type = "update", version = tag, url = updatePage, canAuto = canAuto, notes = Trunc(Str(rel, "body"), 600) });
+                if (canAuto && Option("autoUpdate")) InstallUpdate();
             }
         }
+        catch { }
+    }
+
+    async void InstallUpdate()
+    {
+        if (updating || updateZipUrl == null || updateShaUrl == null) { if (updatePage != null) OpenExternal(updatePage); return; }
+        if (stagedUpdateDir != null) { Send(new { type = "updateReady", version = updateVersion }); return; }
+        updating = true;
+        Send(new { type = "updateProgress", version = updateVersion, text = "×ž×•×¨×™×“ ××ª ×”×¢×“×›×•×Ÿ..." });
+        try
+        {
+            string work = Path.Combine(Path.GetTempPath(), "hit-student-update-" + updateVersion);
+            if (Directory.Exists(work)) Directory.Delete(work, true);
+            Directory.CreateDirectory(work);
+            string zip = Path.Combine(work, "HIT-Student.zip");
+            string expected;
+            using (var http = new HttpClient())
+            {
+                http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "HIT-Student/" + Version);
+                http.Timeout = TimeSpan.FromMinutes(10);
+                expected = (await http.GetStringAsync(updateShaUrl)).Trim().Split(' ', '\t')[0].ToLowerInvariant();
+                using (var resp = await http.GetAsync(updateZipUrl, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    resp.EnsureSuccessStatusCode();
+                    using (var fs = File.Create(zip)) await resp.Content.CopyToAsync(fs);
+                }
+            }
+            string actual;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            using (var fs = File.OpenRead(zip))
+                actual = BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
+            if (actual != expected) throw new Exception("×”×§×•×‘×¥ ×©×”×•×¨×“ ×œ× ×ª×§×™×Ÿ (×‘×“×™×§×ª ×—×ª×™×ž×” × ×›×©×œ×”)");
+
+            string extracted = Path.Combine(work, "x");
+            System.IO.Compression.ZipFile.ExtractToDirectory(zip, extracted);
+            string root = File.Exists(Path.Combine(extracted, "HitStudent.exe")) ? extracted : Path.Combine(extracted, "HIT Student");
+            if (!File.Exists(Path.Combine(root, "HitStudent.exe"))) throw new Exception("×”×¢×“×›×•×Ÿ ×œ× ×ž×›×™×œ ××ª ×”××¤×œ×™×§×¦×™×”");
+            // Make sure nothing in the package escapes the app folder.
+            foreach (string f in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+                if (!IsInside(f, root)) throw new Exception("bad package");
+            stagedUpdateDir = root;
+            Send(new { type = "updateReady", version = updateVersion });
+        }
+        catch (Exception ex) { Send(new { type = "updateProgress", version = updateVersion, text = ex.Message, error = true }); }
+        updating = false;
+    }
+
+    void RestartIntoUpdate()
+    {
+        if (stagedUpdateDir == null) return;
+        try
+        {
+            foreach (string f in Directory.GetFiles(stagedUpdateDir, "*", SearchOption.AllDirectories))
+            {
+                string rel = f.Substring(stagedUpdateDir.Length).TrimStart('\\');
+                if (rel.StartsWith("browser-data", StringComparison.OrdinalIgnoreCase) || rel.Equals("settings.json", StringComparison.OrdinalIgnoreCase)) continue;
+                string target = Path.Combine(AppDir, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                if (File.Exists(target))
+                {
+                    string old = target + ".old";
+                    if (File.Exists(old)) File.Delete(old);
+                    File.Move(target, old);   // works even for the running exe and loaded dlls
+                }
+                File.Copy(f, target);
+            }
+            Process.Start(new ProcessStartInfo(Path.Combine(AppDir, "HitStudent.exe")) { UseShellExecute = false, WorkingDirectory = AppDir });
+            Close();
+        }
+        catch (Exception ex) { Toast("×”×¢×“×›×•×Ÿ × ×›×©×œ: " + ex.Message, true); }
+    }
+
+    static void CleanUpOldFiles()
+    {
+        try { foreach (string f in Directory.GetFiles(AppDir, "*.old", SearchOption.AllDirectories)) try { File.Delete(f); } catch { } }
         catch { }
     }
 
@@ -503,7 +676,7 @@ partial class HitStudent : Form
         string name = SafeName(Path.GetFileName(e.ResultFilePath));
         string dir = siteDownloadCourse != null
             ? Path.Combine(CourseDir(siteDownloadCourse), SafeName(siteDownloadFolder.Length > 0 ? siteDownloadFolder : Exams))
-            : Path.Combine(StudyRoot, "\u05D4\u05D5\u05E8\u05D3\u05D5\u05EA"); // הורדות
+            : Path.Combine(StudyRoot, "\u05D4\u05D5\u05E8\u05D3\u05D5\u05EA"); // ×”×•×¨×“×•×ª
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, name);
         for (int i = 2; File.Exists(path); i++)

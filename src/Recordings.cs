@@ -23,6 +23,8 @@ class Job
     public int Progress = -1;         // -1 = indeterminate
     public string VideoPath;
     public string TranscriptPath;
+    public string Course;             // set for a lesson's recording, so the lesson card can show it
+    public int Lecture;
     public Action<Job> Finished;
 }
 
@@ -65,7 +67,7 @@ partial class HitStudent
         Send(new
         {
             type = "job", id = j.Id, name = j.Name, url = j.Url, state = j.State, status = j.Status, progress = j.Progress,
-            hasVideo = j.VideoPath != null, hasTranscript = j.TranscriptPath != null
+            hasVideo = j.VideoPath != null, hasTranscript = j.TranscriptPath != null, course = j.Course, num = j.Lecture
         });
     }
 
@@ -79,19 +81,20 @@ partial class HitStudent
 
     void Log(Job j, string line) { Send(new { type = "log", id = j.Id, line = line }); }
 
-    bool QueueRecording(string course, int num, string url)
+    // manual = the user pasted this link into the lesson, so download it even if it was downloaded before.
+    bool QueueRecording(string course, int num, string url, bool manual)
     {
         var meta = LoadMeta(course);
         var done = meta.ContainsKey("recordings") ? ((ArrayList)meta["recordings"]).Cast<object>().Select(o => o.ToString()).ToList() : new List<string>();
         string id = url.Split('?')[0];
-        if (done.Contains(id) || jobs.Any(j => j.Url.Split('?')[0] == id && j.State != "failed")) return false;
+        if ((!manual && done.Contains(id)) || jobs.Any(j => j.Url.Split('?')[0] == id && (j.State == "queued" || j.State == "running"))) return false;
 
         string dir = Path.Combine(LectureDir(course, num), RecordingFolder);
         int already = jobs.Count(j => j.Dir == dir);
         string name = LectureFolderName(num) + (already > 0 ? " חלק " + (already + 1) : ""); // "שיעור N" / "שיעור N חלק 2"
         AddJob(new Job
         {
-            Url = url, Name = name, Transcript = true, Dir = dir,
+            Url = url, Name = name, Transcript = true, Dir = dir, Course = course, Lecture = num,
             Finished = j =>
             {
                 if (j.State == "done")

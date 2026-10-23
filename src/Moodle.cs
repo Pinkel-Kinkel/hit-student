@@ -27,6 +27,8 @@ partial class HitStudent
     const string LecturerProfile = "פרופיל המרצה.md"; // פרופיל המרצה.md
     const string ExamPrepPage = "לקראת המבחן.html";   // לקראת המבחן.html
     const string CourseJson = ".hit-student-course.json";
+    const string Cs24Folder = "CS24";
+    const string PointersFolder = "עם מפנים";
 
     readonly SemaphoreSlim moodleLock = new SemaphoreSlim(1, 1);
     bool moodleCancelled;
@@ -197,7 +199,7 @@ const ajax = async (methodname, args) => {
 const now = Math.floor(Date.now() / 1000);
 let events = [];
 try {
-  const d = await ajax('core_calendar_get_action_events_by_timesort', {timesortfrom: now - 3 * 86400, timesortto: now + 45 * 86400, limitnum: 60, limittononsuspendedevents: true});
+  const d = await ajax('core_calendar_get_action_events_by_timesort', {timesortfrom: now - 3 * 86400, timesortto: now + 45 * 86400, limitnum: 50, limittononsuspendedevents: true});
   events = (d.events || []).map(e => ({id: e.id, name: e.activityname || e.name, title: e.name, course: e.course ? e.course.fullname : '', courseId: e.course ? e.course.id : 0,
     when: e.timesort, url: e.url || (e.action && e.action.url) || '', mod: e.modulename || '', overdue: !!e.overdue, action: e.action ? e.action.name : ''}));
 } catch (e) {}
@@ -383,7 +385,15 @@ return out;";
             }
         }
         string page = StudyPagePath(course, num);
-        return new { dir = dir, exists = Directory.Exists(dir), files = files, videos = videos, transcripts = transcripts, studyPage = File.Exists(page) ? page : null };
+        string exercisesDir = Path.Combine(dir, Exercises);
+        string pointersDir = Path.Combine(exercisesDir, PointersFolder);
+        var pointers = Directory.Exists(pointersDir) ? Directory.GetFiles(pointersDir, "*.pdf").Select(p => new { name = Path.GetFileNameWithoutExtension(p), path = p }).ToList<object>() : new List<object>();
+        int exercises = Directory.Exists(exercisesDir) ? Directory.GetFiles(exercisesDir).Length : 0;
+        return new
+        {
+            dir = dir, exists = Directory.Exists(dir), files = files, videos = videos, transcripts = transcripts,
+            studyPage = File.Exists(page) ? page : null, exercises = exercises, pointers = pointers
+        };
     }
 
     object CourseLocal(string course)
@@ -399,7 +409,7 @@ return out;";
         return new
         {
             dir = dir, exists = Directory.Exists(dir), exams = CountFiles(Path.Combine(dir, Exams)), infoFiles = CountFiles(Path.Combine(dir, CourseInfoFolder)),
-            notes = CountFiles(Path.Combine(dir, Notebook)), studyPages = pageCount, info = courseInfo,
+            notes = CountFiles(Path.Combine(dir, Notebook)), cs24 = CountFiles(Path.Combine(dir, Cs24Folder)), studyPages = pageCount, info = courseInfo,
             examPrep = File.Exists(prep) ? prep : null, lecturerProfile = File.Exists(profile) ? profile : null,
             courseInfoMd = File.Exists(Path.Combine(dir, CourseInfoFolder + ".md")) ? Path.Combine(dir, CourseInfoFolder + ".md") : null
         };
@@ -501,11 +511,25 @@ return out;";
             && u.AbsolutePath.StartsWith("/rec/", StringComparison.OrdinalIgnoreCase);
     }
 
-    async void SyncCourse(string course, ArrayList sections)
+    readonly HashSet<string> syncingCourses = new HashSet<string>();
+
+    async void SyncCourse(string course, ArrayList sections) { await SyncCourseAsync(course, sections); }
+
+    // Downloads every lesson of the course. Files already on disk are skipped, so this is cheap to repeat.
+    async Task SyncCourseAsync(string course, ArrayList sections)
     {
-        if (sections == null) return;
-        foreach (Dictionary<string, object> s in sections) await SyncSectionAsync(course, s);
-        Toast("כל הקורס הורד", false); // כל הקורס הורד
+        if (sections == null || !syncingCourses.Add(course)) return;
+        try
+        {
+            var list = sections.Cast<Dictionary<string, object>>().ToList();
+            for (int i = 0; i < list.Count; i++)
+            {
+                Send(new { type = "courseStatus", course = course, busy = true, text = "מעדכן את חומרי הקורס מה-Moodle · " + (i + 1) + "/" + list.Count });
+                await SyncSectionAsync(course, list[i]);
+            }
+            Send(new { type = "courseStatus", course = course, busy = false, text = "", synced = true });
+        }
+        finally { syncingCourses.Remove(course); }
     }
 
     async void SyncSection(string course, Dictionary<string, object> section) { await SyncSectionAsync(course, section); }
@@ -536,7 +560,7 @@ return out;";
                     {
                         if (mod == "zoom")
                         {
-                            if (IsZoomUrl(url) && QueueRecording(course, num, url)) recordings++;
+                            if (IsZoomUrl(url) && Option("autoRecordings") && QueueRecording(course, num, url, false)) recordings++;
                             continue;
                         }
                         if (!IsMoodleUrl(url)) continue;
@@ -551,7 +575,7 @@ return out;";
                         else if (mod == "url")
                         {
                             string real = await WithMoodle(() => ResolveMoodleUrl(url));
-                            if (IsZoomUrl(real)) { if (QueueRecording(course, num, real)) recordings++; }
+                            if (IsZoomUrl(real)) { if (Option("autoRecordings") && QueueRecording(course, num, real, false)) recordings++; }
                             else if (real.StartsWith("https://") || real.StartsWith("http://"))
                                 File.WriteAllText(Path.Combine(LectureDir(course, num), SafeName(name) + ".url"), "[InternetShortcut]\r\nURL=" + real.Replace("\r", "").Replace("\n", "") + "\r\n");
                         }

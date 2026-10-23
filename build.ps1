@@ -34,6 +34,7 @@ $sources = Get-ChildItem (Join-Path $root 'src') -Filter *.cs | ForEach-Object {
     "/out:$out\HitStudent.exe" `
     "/win32icon:$(Join-Path $root 'assets\app.ico')" "/win32manifest:$(Join-Path $root 'assets\app.manifest')" `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Net.Http.dll /r:System.Security.dll `
+    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
     "/r:$out\Microsoft.Web.WebView2.Core.dll" "/r:$out\Microsoft.Web.WebView2.WinForms.dll" `
     $sources
 if ($LASTEXITCODE -ne 0) { throw 'Compile failed' }
@@ -41,6 +42,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Compile failed' }
 $zipOut = Join-Path $root 'dist\HIT-Student.zip'
 Remove-Item $zipOut -ErrorAction SilentlyContinue
 Compress-Archive $out $zipOut
+# The app checks this hash before it installs an update.
+$hash = (Get-FileHash $zipOut -Algorithm SHA256).Hash.ToLowerInvariant()
+Set-Content -Path "$zipOut.sha256" -Value "$hash  HIT-Student.zip" -Encoding ascii -NoNewline
 Write-Host "Built: $out"
 Write-Host "Zip:   $zipOut"
 

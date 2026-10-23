@@ -25,10 +25,11 @@
     </button>
     <button class="nav-item active" data-view="home"><span class="ni" data-ic="home"></span><span class="nav-text">בית</span></button>
     <button class="nav-item" data-view="courses"><span class="ni" data-ic="book"></span><span class="nav-text">הקורסים שלי</span></button>
-    <button class="nav-item" data-view="recordings"><span class="ni" data-ic="video"></span><span class="nav-text">הקלטות</span><span class="count" id="jobCount" hidden>0</span></button>
+    <button class="nav-item" data-view="recordings" id="navDownloads" hidden><span class="ni" data-ic="download"></span><span class="nav-text">הורדות</span><span class="count" id="jobCount" hidden>0</span></button>
     <button class="nav-item" data-view="sites"><span class="ni" data-ic="globe"></span><span class="nav-text">אתרים</span></button>
     <button class="nav-item" data-view="settings"><span class="ni" data-ic="settings"></span><span class="nav-text">הגדרות</span></button>
     <div class="grow"></div>
+    <button class="theme-toggle" id="themeToggle" title="מצב בהיר / כהה"><span id="themeIcon"></span><span class="nav-text" id="themeText">מצב כהה</span></button>
     <button class="status-pill" id="moodlePill"><span class="dot" id="moodleDot"></span><span><span id="moodleText">Moodle</span><small id="moodleSub">בודק...</small></span></button>
     <button class="status-pill" id="aiPill"><span class="dot" id="aiDot"></span><span><span id="aiText">AI</span><small id="aiSub">בודק...</small></span></button>
   </nav>
@@ -94,7 +95,8 @@
           </div>
         </div>
         <div class="course-actions">
-          <button class="primary" id="syncAll"><span data-ic="download"></span>הורד את כל הקורס</button>
+          <button class="primary" id="learnAll"><span data-ic="brain"></span>למד את כל הקורס</button>
+          <button class="soft" id="syncAll"><span data-ic="download"></span>עדכן מה-Moodle</button>
           <button class="soft" id="examPrepBtn"><span data-ic="brain"></span>המוח של המרצה</button>
           <button id="openCourseFolder"><span data-ic="folder"></span>תיקיית הקורס</button>
           <button id="reloadCourse" class="ghost"><span data-ic="refresh"></span>רענן</button>
@@ -133,22 +135,7 @@
     <!-- Recordings -->
     <section class="view" id="view-recordings">
       <div class="page" style="max-width:820px">
-        <div class="head"><div class="grow"><h1>הקלטות Zoom</h1><p>מדביקים קישור להקלטה ומקבלים את הסרטון ואת התמלול בעברית.</p></div></div>
-        <section class="card pad-lg">
-          <div class="field-group">
-            <label class="field" for="url">קישור להקלטה</label>
-            <div class="row"><input type="text" class="ltr" id="url" placeholder="https://hit-ac-il.zoom.us/rec/play/…" spellcheck="false" autocomplete="off"><button id="paste"><span data-ic="clipboard"></span>הדבק</button></div>
-          </div>
-          <div class="field-group">
-            <label class="field" for="name">שם <span>(לא חובה. אם ריק, משתמשים בשם מהזום)</span></label>
-            <input type="text" id="name" dir="auto" placeholder="למשל: אינפי 2 - הרצאה 5" autocomplete="off">
-          </div>
-          <div class="form-actions">
-            <label class="toggle"><input type="checkbox" id="transcript" checked><span class="switch"></span>שמור גם תמלול (txt)</label>
-            <button class="primary big" id="go"><span data-ic="download"></span>הורד</button>
-          </div>
-        </section>
-        <h2 style="margin:26px 2px 12px">הורדות</h2>
+        <div class="head"><div class="grow"><h1>הורדות</h1><p>הקלטות שיורדות עכשיו. הקלטה של שיעור מוסיפים מתוך השיעור עצמו, בכפתור "הוסף הקלטה".</p></div></div>
         <ul id="jobs"></ul>
         <div id="jobsEmpty"></div>
       </div>
@@ -161,6 +148,7 @@
           <button data-site="moodle" class="active">Moodle</button>
           <button data-site="portal">פורטל מידע אישי</button>
           <button data-site="cs24">CS24</button>
+          <button data-site="notability">Notability</button>
         </div>
         <button class="small icon ghost" id="siteBack" title="אחורה"><span data-ic="back"></span></button>
         <button class="small icon ghost" id="siteForward" title="קדימה"><span data-ic="forward"></span></button>
@@ -169,7 +157,7 @@
         <div class="grow"></div>
         <span class="muted" style="font-size:12.5px">הורדות נשמרות ב:</span>
         <select id="dlCourse"><option value="">תיקיית "הורדות"</option></select>
-        <select id="dlFolder"><option value="מבחנים">מבחנים</option><option value="מידע על הקורס">מידע על הקורס</option><option value="כללי">כללי</option></select>
+        <select id="dlFolder"><option value="CS24">CS24 (סיכומים ומחברות)</option><option value="מבחנים">מבחנים</option><option value="מחברת">המחברת שלי</option><option value="מידע על הקורס">מידע על הקורס</option><option value="כללי">כללי</option></select>
         <button class="small ghost" id="siteExternal" title="פתח בדפדפן"><span data-ic="external"></span></button>
       </div>
       <div id="siteHost"><div class="loading"><span class="spinner lg"></span></div></div>
@@ -202,8 +190,24 @@
             <button id="changeNotability">בחר תיקייה</button>
           </div>
           <div class="setting">
-            <div class="grow"><b>גרסה</b><small id="versionText"></small></div>
-            <button class="ghost" id="showWelcome">הצג שוב את מסך הפתיחה</button>
+            <div class="grow"><b>מראה</b><small>בהיר, כהה, או לפי ההגדרה של Windows.</small></div>
+            <select id="themeSelect" style="width:auto"><option value="system">לפי Windows</option><option value="light">בהיר</option><option value="dark">כהה</option></select>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>הורדה אוטומטית</b><small>כשנכנסים לקורס, כל החומר החדש מה-Moodle יורד לבד לתיקייה של הקורס.</small></div>
+            <label class="toggle"><input type="checkbox" id="optSync"><span class="switch"></span></label>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>גם הקלטות</b><small>להוריד אוטומטית הקלטות Zoom שמופיעות בקורס (עם תמלול). הן גדולות, בערך 300MB לשיעור.</small></div>
+            <label class="toggle"><input type="checkbox" id="optRec"><span class="switch"></span></label>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>עדכונים אוטומטיים</b><small id="versionText"></small></div>
+            <label class="toggle"><input type="checkbox" id="optUpdate"><span class="switch"></span></label>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>מסך הפתיחה</b><small>להציג שוב את ההדרכה של הפעם הראשונה.</small></div>
+            <button class="ghost" id="showWelcome">הצג</button>
           </div>
         </section>
       </div>

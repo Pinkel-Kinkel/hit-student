@@ -8,8 +8,21 @@ const send = (m) => host && host.postMessage(m);
 const S = {
   settings: {}, moodle: 'checking', ai: null, courses: null, events: null, userName: '',
   course: null, sections: [], local: null, notability: null, open: new Set(), tab: 'lessons',
-  chatBusy: false, chatHidden: false, view: 'home', site: 'moodle', jobs: new Map(), ready: { settings: false, ai: false }
+  chatBusy: false, chatHidden: false, view: 'home', site: 'moodle', jobs: new Map(), ready: { settings: false, ai: false }, theme: 'system'
 };
+
+// ---------- Theme ----------
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(t) {
+  if (t) S.theme = t;
+  const dark = S.theme === 'dark' || (S.theme === 'system' && darkQuery.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const icon = $('themeIcon'); if (icon) icon.innerHTML = dark ? IC.sun : IC.moon;
+  const text = $('themeText'); if (text) text.textContent = dark ? 'מצב בהיר' : 'מצב כהה';
+  const sel = $('themeSelect'); if (sel) sel.value = S.theme;
+}
+darkQuery.addEventListener('change', () => applyTheme());
+applyTheme('system');
 
 // ---------- Small helpers ----------
 function icons(root = document) {
@@ -95,7 +108,7 @@ $('brand').onclick = () => show('home');
 // ---------- Status ----------
 function aiName() { return (S.ai && S.ai.provider === 'gemini') ? 'Gemini' : 'Claude'; }
 function setupText(s) {
-  return { 'installing-claude': 'מתקין את Claude...', 'login-claude': 'ממתין להתחברות בדפדפן...', 'installing-node': 'מכין את Gemini...', 'installing-gemini': 'מתקין את Gemini...' }[s] || '';
+  return { 'installing-claude': 'מתקין את Claude...', 'login-claude': 'ממתין להתחברות בדפדפן...', 'installing-node': 'מכין את Gemini...', 'installing-gemini': 'מתקין את Gemini...', 'login-gemini': 'ממתין להתחברות ל-Google בדפדפן...' }[s] || '';
 }
 function renderStatus() {
   const m = S.moodle;
@@ -113,6 +126,10 @@ function renderStatus() {
     else { dot = 'bad'; sub = 'לחץ כדי לחבר'; }
   }
   $('aiDot').className = 'dot ' + dot; $('aiSub').textContent = sub;
+  // The sidebar only speaks up when something needs attention.
+  $('moodlePill').hidden = mm[0] !== 'bad';
+  $('aiPill').hidden = !(a && !a.ready && !a.setup);
+  $('moodlePill').classList.add('alert'); $('aiPill').classList.add('alert');
   $('aiChip').className = 'chip ' + (dot === 'ok' ? 'ok' : dot === 'wait' ? 'warn' : 'bad'); $('aiChip').textContent = aiName() + ' · ' + sub;
   renderProviders();
   renderBanners();
@@ -125,7 +142,9 @@ function connectMoodle() { S.moodle = 'connecting'; renderStatus(); send({ type:
 
 function renderBanners() {
   const b = $('banners'); b.innerHTML = '';
-  if (S.update) b.append(bannerEl(`גרסה חדשה זמינה: ${esc(S.update.version)}`, 'להורדה', () => send({ type: 'openLink', url: S.update.url })));
+  if (S.updateReady) b.append(bannerEl(`גרסה ${esc(S.updateReady)} מוכנה`, 'הפעל מחדש עכשיו', () => send({ type: 'restartForUpdate' })));
+  else if (S.update && S.update.progress) b.append(bannerEl(esc(S.update.progress), S.update.error ? 'לדף ההורדה' : '...', () => S.update.error && send({ type: 'openLink', url: S.update.url }), S.update.error ? 'warn' : ''));
+  else if (S.update) b.append(bannerEl(`גרסה חדשה זמינה: ${esc(S.update.version)}`, S.update.canAuto ? 'עדכן עכשיו' : 'להורדה', () => S.update.canAuto ? send({ type: 'installUpdate' }) : send({ type: 'openLink', url: S.update.url })));
   if (S.ai && !S.ai.ready && !S.ai.setup) b.append(bannerEl('חבר את המנוע החכם כדי לסכם שיעורים ולשאול שאלות', 'חבר עכשיו', () => openWizard(1), 'warn'));
   if (S.moodle === 'login') b.append(bannerEl('צריך להתחבר ל-Moodle כדי לראות את הקורסים', 'התחבר', connectMoodle, 'warn'));
 }
@@ -149,16 +168,18 @@ function providerCard(kind) {
     else { state = '<span class="chip">לא מותקן</span>'; act = '<button class="primary small" data-act="setupClaude">התקן והתחבר</button>'; }
   } else {
     if (busy) state = `<span class="spinner"></span>${setupText(a.setup)}`;
-    else if (c.installed && c.hasKey) state = '<span class="chip ok"><span data-ic="check"></span>מחובר</span>';
-    else if (c.installed) state = '<span class="chip warn">צריך מפתח</span>';
+    else if (c.installed && (c.hasKey || c.google)) state = `<span class="chip ok"><span data-ic="check"></span>מחובר</span><span class="muted">${c.google && !c.hasKey ? 'עם חשבון Google' : 'עם מפתח'}</span>`;
+    else if (c.installed) state = '<span class="chip warn">מותקן, לא מחובר</span>';
     else { state = '<span class="chip">לא מותקן</span>'; act = '<button class="primary small" data-act="setupGemini">התקן את Gemini</button>'; }
-    if (c.installed && !busy) act = `<div class="row" style="width:100%"><input type="password" class="ltr" placeholder="${c.hasKey ? 'המפתח שמור · אפשר להחליף' : 'הדבק כאן מפתח API'}" data-key><button class="small" data-act="saveKey">שמור</button></div>
-      <button class="link" data-act="getKey">קבל מפתח חינמי מ-Google AI Studio</button>`;
+    if (c.installed && !busy) act = `<button class="primary small" data-act="loginGemini">${c.google ? 'התחבר מחדש עם Google' : 'התחבר עם חשבון Google'}</button>
+      <span class="muted" style="font-size:12px;width:100%">חינמי, או לפי המנוי שלך (Google AI Pro / Ultra). או במפתח API:</span>
+      <div class="row" style="width:100%"><input type="password" class="ltr" placeholder="${c.hasKey ? 'המפתח שמור · אפשר להחליף' : 'מפתח API (לא חובה)'}" data-key><button class="small" data-act="saveKey">שמור</button></div>
+      <button class="link" data-act="getKey">קבל מפתח מ-Google AI Studio</button>`;
   }
   const el = h(`<div class="provider${sel ? ' selected' : ''}" data-kind="${kind}">
-    ${kind === 'claude' ? '<span class="chip accent tag">מומלץ</span>' : '<span class="chip ok tag">חינמי</span>'}
+    ${kind === 'claude' ? '<span class="chip accent tag">מומלץ</span>' : '<span class="chip ok tag">חינמי או מנוי</span>'}
     <div class="ph"><span class="pl ${kind}" data-ic="${kind}"></span><div><h3>${kind === 'claude' ? 'Claude' : 'Gemini'}</h3></div></div>
-    <p>${kind === 'claude' ? 'הכי טוב בסיכומים ארוכים ובבניית דפי לימוד. דורש חשבון Claude (Pro ומעלה מומלץ).' : 'מתאים למי שאין לו Claude. טוב מאוד לצ\'אט ולשאלות, קצת פחות מדויק בסיכומים ארוכים.'}</p>
+    <p>${kind === 'claude' ? 'הכי טוב בסיכומים ארוכים ובבניית דפי לימוד. דורש חשבון Claude (Pro ומעלה מומלץ).' : 'מתחברים עם חשבון Google: חינמי, או עם המנוי שלך ל-Google AI. טוב מאוד לצ\'אט ולשאלות, קצת פחות מדויק בסיכומים ארוכים.'}</p>
     <div class="state">${state}</div><div class="act">${act}</div></div>`);
   el.onclick = (e) => {
     const t = e.target.closest('[data-act]');
@@ -168,6 +189,7 @@ function providerCard(kind) {
       if (actn === 'setupClaude') { send({ type: 'setProvider', provider: 'claude' }); send({ type: 'setupClaude' }); toast('מתחבר ל-Claude. אם נפתח דפדפן, אשר שם את ההתחברות.'); }
       if (actn === 'setupGemini') { send({ type: 'setProvider', provider: 'gemini' }); send({ type: 'setupGemini' }); }
       if (actn === 'getKey') send({ type: 'openGeminiKeyPage' });
+      if (actn === 'loginGemini') { send({ type: 'setProvider', provider: 'gemini' }); send({ type: 'loginGemini' }); toast('נפתח דפדפן להתחברות עם Google. אשר שם והאפליקציה תמשיך לבד.'); }
       if (actn === 'saveKey') { const v = el.querySelector('[data-key]').value.trim(); if (v.length < 20) return toast('המפתח נראה קצר מדי', { error: true }); send({ type: 'setGeminiKey', key: v }); send({ type: 'setProvider', provider: 'gemini' }); toast('המפתח נשמר בצורה מוצפנת'); }
       return;
     }
@@ -225,12 +247,12 @@ function renderHome() {
 $('heroArt').innerHTML = ART.hero();
 $('heroCourses').innerHTML = IC.book + 'לקורסים שלי';
 $('heroCourses').onclick = () => show('courses');
-$('heroPaste').innerHTML = IC.video + 'הורדת הקלטה';
-$('heroPaste').onclick = () => { show('recordings'); send({ type: 'paste' }); };
+$('heroPaste').innerHTML = IC.exam + 'מבחנים ב-CS24';
+$('heroPaste').onclick = () => openSite('cs24');
 $('allCourses').onclick = () => show('courses');
 (function quick() {
   const items = [
-    ['c1', 'clipboard', 'הדבק קישור Zoom', 'מורידים הקלטה עם תמלול', () => { show('recordings'); send({ type: 'paste' }); }],
+    ['c1', 'note', 'Notability', 'המחברות שלך מההרצאות', () => openSite('notability')],
     ['c2', 'exam', 'מבחנים ב-CS24', 'מבחנים וסיכומים משנים קודמות', () => openSite('cs24')],
     ['c3', 'user', 'פורטל מידע אישי', 'ציונים, מערכת שעות ובחינות', () => openSite('portal')],
     ['c4', 'folder', 'תיקיית הקורסים', 'כל החומר שהורדת', () => send({ type: 'openFolder', which: 'study' })]
@@ -294,10 +316,17 @@ function openCourse(c) {
 $('backToCourses').onclick = () => { S.course = null; show('courses'); };
 $('reloadCourse').onclick = () => S.course && openCourse(S.course);
 $('openCourseFolder').onclick = () => S.local && send({ type: 'openPath', path: S.local.dir });
-$('syncAll').onclick = () => {
+const plainSections = () => S.sections.map(s => ({ num: s.num, title: s.title, items: s.items }));
+function syncCourse(quiet) {
   if (!S.sections.length) return;
-  send({ type: 'syncCourse', course: S.course.name, sections: S.sections.map(s => ({ num: s.num, title: s.title, items: s.items })) });
-  toast('מוריד את כל הקורס... אפשר להמשיך לעבוד בינתיים');
+  send({ type: 'syncCourse', course: S.course.name, sections: plainSections() });
+  if (!quiet) toast('מעדכן את כל הקורס מה-Moodle... אפשר להמשיך לעבוד בינתיים');
+}
+$('syncAll').onclick = () => syncCourse(false);
+$('learnAll').onclick = () => {
+  if (!S.sections.length) return;
+  send({ type: 'learnCourse', course: S.course.name, sections: plainSections() });
+  toast(`${aiName()} מתחיל ללמוד את כל הקורס: מוריד הכל, קורא את הסילבוס, בונה דף לימוד לכל שיעור ולומד את המרצה מהמבחנים. זה לוקח זמן, אפשר להמשיך לעבוד.`, { ms: 8000 });
 };
 $('examPrepBtn').onclick = () => { setTab('exams'); };
 $('toggleChat').onclick = () => { S.chatHidden = !S.chatHidden; $('courseBody').classList.toggle('no-chat', S.chatHidden); $('chat').hidden = S.chatHidden; };
@@ -380,12 +409,24 @@ function fillLecture(el, s) {
   else btn('sparkles', L.studyPage ? 'בנה מחדש' : 'סכם את השיעור', L.studyPage || !L.files ? 'soft' : 'primary',
     () => send({ type: 'summarize', course: course.name, num: s.num, title: s.title }), s.busy || !(L.files || L.transcripts));
   if (L.studyPage) btn('external', 'פתח דף לימוד', 'primary', () => send({ type: 'openPath', path: L.studyPage }));
+  if (L.exercises || assigns) btn('exam', 'הכן לשיעורי הבית', 'soft', () => send({ type: 'homework', course: course.name, num: s.num, title: s.title }), s.busy || s.aiBusy || !L.exercises);
+  (L.pointers || []).forEach(p => btn('file', 'תרגיל עם מפנים: ' + esc(p.name.replace(' - מפנים', '')), '', () => send({ type: 'openPath', path: p.path })));
+  btn('video', 'הוסף הקלטה', 'ghost', () => {
+    if (el.querySelector('.rec-row')) return;
+    const row = h(`<div class="row rec-row" style="margin-top:10px"><input type="text" class="ltr" placeholder="הדבק קישור להקלטת Zoom של השיעור" spellcheck="false"><button class="primary small">הורד</button></div>`);
+    const go = () => { const v = row.querySelector('input').value.trim(); if (!v) return; send({ type: 'addRecording', course: course.name, num: s.num, url: v }); row.remove(); };
+    row.querySelector('button').onclick = go;
+    row.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    a.after(row); row.querySelector('input').focus();
+  });
   btn('plus', 'הוסף קבצים', 'ghost', () => send({ type: 'addFiles', course: course.name, folder: String(s.num) }));
   if (L.exists) btn('folder', 'תיקייה', 'ghost', () => send({ type: 'openPath', path: L.dir }));
 
+  const job = lessonJob(s.num);
   const st = el.querySelector('.status');
-  st.className = 'status' + (s.statusError ? ' error' : '');
-  st.innerHTML = (s.busy || s.aiBusy ? '<span class="spinner"></span>' : '') + `<span dir="auto">${esc(s.status || (!L.files && s.items.length ? 'לחץ "הורד" כדי לשמור את החומר במחשב, ואז "סכם את השיעור"' : ''))}</span>`;
+  st.className = 'status' + (s.statusError || (job && job.state === 'failed') ? ' error' : '');
+  const text = s.status || (job ? 'הקלטה: ' + job.status : '') || (!L.files && s.items.length ? 'החומר יורד אוטומטית כשנכנסים לקורס. אפשר גם ללחוץ "הורד".' : '');
+  st.innerHTML = (s.busy || s.aiBusy || (job && job.state !== 'failed') ? '<span class="spinner"></span>' : '') + `<span dir="auto">${esc(text)}</span>`;
 }
 function section(num) { return S.sections.find(s => s.num === num); }
 function refreshSection(num) {
@@ -457,12 +498,22 @@ function renderExams() {
   p.append(card);
   const acts = card.querySelector('#examActs');
   const add = (ic, t, cls, fn, dis) => { const b = h(`<button class="${cls}"><span data-ic="${ic}"></span>${t}</button>`); b.onclick = fn; b.disabled = !!dis; acts.append(b); };
-  add('exam', 'חפש מבחנים ב-CS24', 'soft', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); toast('כל קובץ שתוריד מ-CS24 יישמר בתיקיית המבחנים של הקורס'); });
+  add('exam', 'מבחנים מ-CS24', 'soft', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); toast('כל קובץ שתוריד מ-CS24 יישמר בתיקיית המבחנים של הקורס'); });
+  add('book', 'סיכומים ומחברות מ-CS24', 'soft', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); toast('סיכומים ומחברות שתוריד מ-CS24 יישמרו בקורס, וה-AI ישתמש בהם'); });
   add('plus', 'הוסף מבחנים מהמחשב', 'ghost', () => send({ type: 'addFiles', course: S.course.name, folder: 'מבחנים' }));
   if (L.exams) add('folder', 'תיקיית המבחנים', 'ghost', () => send({ type: 'openPath', path: L.dir + '\\מבחנים' }));
   add('brain', busy ? 'עובד על זה...' : (L.lecturerProfile ? 'בנה מחדש' : 'בנה את המוח של המרצה'), 'primary', () => { S.examBusy = true; send({ type: 'examPrep', course: S.course.name }); renderExams(); }, busy || !L.exams);
   if (L.examPrep) add('external', 'דף ההכנה למבחן', 'primary', () => send({ type: 'openPath', path: L.examPrep }));
   if (L.lecturerProfile) add('user', 'פרופיל המרצה', '', () => send({ type: 'openPath', path: L.lecturerProfile }));
+}
+
+// Notability's own site inside the app: sign in once, open a note, and "Export as PDF" saves it into this course.
+function notabilityWebButton() {
+  const card = h(`<div class="card" style="margin-top:14px"><div class="row" style="gap:14px"><span class="ic other" data-ic="note"></span>
+    <div class="grow"><b>או ישר מהחשבון שלך ב-Notability</b><div class="muted" style="font-size:12.5px">פותחים את Notability בתוך האפליקציה ומתחברים לחשבון. כל מחברת שמייצאים ל-PDF נשמרת לבד בתיקיית המחברת של הקורס.</div></div>
+    <button class="primary">פתח את Notability</button></div></div>`);
+  card.querySelector('button').onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מחברת'; syncDownloadTarget(); openSite('notability'); };
+  return card;
 }
 
 function renderNotes() {
@@ -474,6 +525,7 @@ function renderNotes() {
       ב-Notability באייפד: הגדרות › גיבוי אוטומטי › Google Drive / OneDrive / Dropbox, בפורמט PDF.<br>כשהתיקייה מסונכרנת למחשב, בחר אותה כאן. המחברות של הקורס ייכנסו לסיכומים ולצ'אט.
       <div class="row"><button class="primary" id="pickNot"><span data-ic="folder"></span>בחר את תיקיית הגיבוי</button></div></div>`));
     $('pickNot').onclick = () => send({ type: 'chooseFolder', which: 'notability' });
+    p.append(notabilityWebButton());
     return;
   }
   const opts = ['<option value="">בחר את הנושא ב-Notability...</option>'].concat((N.subjects || []).map(s => `<option ${s === (N.linked || N.guess) ? 'selected' : ''}>${esc(s)}</option>`)).join('');
@@ -483,6 +535,7 @@ function renderNotes() {
     <div class="row wrap" style="margin-top:12px">${N.linked ? `<span class="chip ok">מקושר ל"${esc(N.linked)}"</span>` : N.guess ? `<span class="chip accent">הצעה: ${esc(N.guess)}</span>` : ''}<span class="chip">${N.notes || 0} דפי מחברת</span></div></div></div></div>`);
   p.append(card);
   $('notLink').onclick = () => send({ type: 'linkNotability', course: S.course.name, folder: $('notSubject').value });
+  p.append(notabilityWebButton());
   if (N.notes) { const b = h('<button class="ghost" style="margin-top:12px"><span data-ic="folder"></span>פתח את המחברת</button>'); b.onclick = () => send({ type: 'openPath', path: L.dir + '\\מחברת' }); p.append(b); }
 }
 
@@ -529,13 +582,9 @@ $('newChat').onclick = () => { if (!S.course || S.chatBusy) return; send({ type:
 
 // ---------- Recordings ----------
 const jobIcons = { queued: 'clock', running: 'spin', done: 'check', failed: 'alert' };
-function addJob() {
-  const url = $('url').value.trim();
-  if (!url) { $('url').focus(); return; }
-  send({ type: 'add', url, name: $('name').value.trim(), transcript: $('transcript').checked });
-  $('url').value = ''; $('name').value = ''; $('url').focus();
-}
 function renderJob(j) {
+  S.jobs.set(j.id, j);
+  if (j.course && S.course && S.course.name === j.course) refreshSection(j.num);
   let el = document.querySelector(`.job[data-id="${j.id}"]`);
   if (!el) {
     el = h(`<li class="job" data-id="${j.id}"><div class="job-top"><div class="badge-ic"></div><div class="job-main"><div class="job-name" dir="auto"></div><div class="job-status" dir="auto"></div></div><div class="job-buttons"></div></div>
@@ -561,9 +610,15 @@ function renderJob(j) {
 }
 function refreshJobs() {
   const e = $('jobsEmpty'); e.innerHTML = '';
-  if (!S.jobs.size) e.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>אין הורדות עדיין</b>מעתיקים קישור להקלטה מה-Moodle והוא מופיע כאן לבד. הקלטות של שיעורים יורדות גם מתוך דף הקורס.</div>`));
+  if (!S.jobs.size) e.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>אין הורדות עכשיו</b>הקלטה של שיעור מוסיפים מתוך השיעור, בכפתור "הוסף הקלטה".</div>`));
   const active = [...S.jobs.values()].filter(j => j.state === 'running' || j.state === 'queued').length;
   $('jobCount').hidden = !active; $('jobCount').textContent = active;
+  $('navDownloads').hidden = !S.jobs.size;
+}
+// The recording that is downloading for a lesson right now, if any.
+function lessonJob(num) {
+  if (!S.course) return null;
+  return [...S.jobs.values()].reverse().find(j => j.course === S.course.name && j.num === num && (j.state === 'running' || j.state === 'queued' || j.state === 'failed')) || null;
 }
 function jobLog(id, line) {
   const pre = document.querySelector(`.job[data-id="${id}"] pre`); if (!pre) return;
@@ -572,10 +627,6 @@ function jobLog(id, line) {
   if (lines.length > 300) pre.textContent = lines.slice(-300).join('\n');
   pre.scrollTop = pre.scrollHeight;
 }
-$('go').onclick = addJob;
-$('url').addEventListener('keydown', e => { if (e.key === 'Enter') addJob(); });
-$('name').addEventListener('keydown', e => { if (e.key === 'Enter') addJob(); });
-$('paste').onclick = () => send({ type: 'paste' });
 
 // ---------- Sites ----------
 function openSite(site, url) {
@@ -617,6 +668,9 @@ function renderSettings() {
   $('wizStudy').textContent = st.studyRoot;
   $('wizNot').textContent = st.notabilityDir || 'אם Notability מגבה את המחברות לתיקייה במחשב, בחר אותה כאן';
   $('wizNotRow').classList.toggle('ok', !!st.notabilityDir);
+  $('optSync').checked = st.autoSync !== false; $('optRec').checked = st.autoRecordings !== false; $('optUpdate').checked = st.autoUpdate !== false;
+  $('versionText').textContent = `HIT Student ${st.version || ''} · מתעדכנת לבד כשיוצאת גרסה חדשה`;
+  applyTheme(st.theme || 'system');
 }
 $('changeStudy').onclick = $('wizStudyBtn').onclick = () => send({ type: 'chooseFolder', which: 'study' });
 $('openStudy').onclick = () => send({ type: 'openFolder', which: 'study' });
@@ -624,6 +678,13 @@ $('changeRec').onclick = () => send({ type: 'chooseFolder', which: 'recordings' 
 $('openRec').onclick = () => send({ type: 'openFolder', which: 'recordings' });
 $('changeNotability').onclick = $('wizNotBtn').onclick = () => send({ type: 'chooseFolder', which: 'notability' });
 $('showWelcome').onclick = () => openWizard(0);
+$('themeSelect').onchange = () => { applyTheme($('themeSelect').value); send({ type: 'setOption', name: 'theme', value: S.theme }); };
+$('themeToggle').onclick = () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next); send({ type: 'setOption', name: 'theme', value: next });
+};
+[['optSync', 'autoSync'], ['optRec', 'autoRecordings'], ['optUpdate', 'autoUpdate']].forEach(([id, name]) =>
+  $(id).onchange = () => send({ type: 'setOption', name, value: $(id).checked }));
 
 // ---------- First-run setup ----------
 let wizStep = 0, wizPoll = null;
@@ -695,8 +756,15 @@ function onMessage(m) {
       else if (!m.lecturer) setTimeout(() => $('lecturer').focus(), 600);
       renderCourseHeader(); renderLectures();
       if (S.tab !== 'lessons') setTab(S.tab);
+      // The AI reads the files on this computer, so new material is pulled from Moodle as soon as the course opens.
+      if (S.settings.autoSync !== false) syncCourse(true);
       break;
     }
+    case 'learnStatus':
+      if (!S.course || S.course.name !== m.course) break;
+      courseStatus(m.text, m.busy, false);
+      $('learnAll').disabled = m.busy;
+      break;
     case 'courseError':
       if (S.course && S.course.id === m.id) { $('lectures').innerHTML = ''; $('lectures').append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>לא הצלחתי לקרוא את הקורס</b><span dir="auto">${esc(m.message)}</span></div>`)); }
       break;
@@ -749,15 +817,19 @@ function onMessage(m) {
     case 'chatDone': if (thinking) { thinking.remove(); thinking = null; } S.chatBusy = false; $('chatSend').disabled = false; break;
     case 'job': renderJob(m); break;
     case 'log': jobLog(m.id, m.line); break;
-    case 'clipboard':
-      if (m.force || !$('url').value.trim()) {
-        $('url').value = m.url;
-        $('url').classList.remove('flash'); void $('url').offsetWidth; $('url').classList.add('flash');
-        if (!m.force && S.view !== 'recordings') toast('העתקת קישור להקלטת Zoom', { action: 'הורד', onAction: () => show('recordings') });
-      }
+    case 'clipboard': {
+      // A copied Zoom link goes to the lesson that's open, or the latest lesson of the open course.
+      if (!S.course || !S.sections.length) { toast('העתקת קישור להקלטת Zoom. פתח את הקורס ולחץ "הוסף הקלטה" בשיעור המתאים.'); break; }
+      const open = [...S.open].filter(n => n > 0).sort((a, b) => b - a)[0];
+      const latest = S.sections.filter(s => s.num > 0 && s.items.length).map(s => s.num).sort((a, b) => b - a)[0];
+      const num = open || latest;
+      if (num) toast(`העתקת קישור להקלטת Zoom`, { action: `הוסף לשיעור ${num}`, ms: 9000, onAction: () => send({ type: 'addRecording', course: S.course.name, num, url: m.url }) });
       break;
+    }
     case 'toast': toast(m.text, { error: m.error }); break;
     case 'update': S.update = m; renderBanners(); break;
+    case 'updateProgress': S.update = Object.assign(S.update || {}, { progress: m.text, error: m.error }); renderBanners(); break;
+    case 'updateReady': S.updateReady = m.version; renderBanners(); toast(`העדכון לגרסה ${m.version} מוכן`, { action: 'הפעל מחדש', onAction: () => send({ type: 'restartForUpdate' }), ms: 12000 }); break;
     case 'notabilitySubjects': if (S.course) send({ type: 'openCourse', id: S.course.id, course: S.course.name }); break;
     case 'siteNav': $('siteUrl').textContent = m.url || ''; $('siteBack').disabled = !m.canBack; $('siteForward').disabled = !m.canForward; break;
     case 'siteDownload':

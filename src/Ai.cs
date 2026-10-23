@@ -59,13 +59,14 @@ partial class HitStudent
         }
         bool geminiInstalled = FindGemini() != null;
         bool geminiKey = Str(settings, "geminiKey").Length > 0;
+        bool geminiGoogle = GeminiGoogleSignedIn();
         string provider = Provider;
-        bool ready = provider == "claude" ? claudeIn : (geminiInstalled && geminiKey);
+        bool ready = provider == "claude" ? claudeIn : (geminiInstalled && (geminiKey || geminiGoogle));
         return new
         {
             provider = provider, ready = ready, setup = setupState,
             claude = new { installed = claude != null, loggedIn = claudeIn, email = email, plan = plan },
-            gemini = new { installed = geminiInstalled, hasKey = geminiKey }
+            gemini = new { installed = geminiInstalled, hasKey = geminiKey, google = geminiGoogle }
         };
     }
 
@@ -118,6 +119,38 @@ partial class HitStudent
                 var r = await Exec(FindNpm(), "install -g @google/gemini-cli", null, 900000,
                     new Dictionary<string, string> { { "PATH", Path.GetDirectoryName(FindNpm()) + ";" + Environment.GetEnvironmentVariable("PATH") } });
                 if (FindGemini() == null) throw new Exception("ההתקנה של Gemini נכשלה. " + Trunc(r.Item2, 200));
+            }
+        }
+        catch (Exception ex) { Toast(ex.Message, true); }
+        setupState = "";
+        await SendAiStatus();
+    }
+
+    static string GeminiDir { get { return Path.Combine(Home, ".gemini"); } }
+
+    static bool GeminiGoogleSignedIn() { return File.Exists(Path.Combine(GeminiDir, "oauth_creds.json")); }
+
+    // "Sign in with Google": Gemini CLI opens the Google sign-in page in the browser and saves the login itself.
+    // Works for free accounts and for Google AI Pro / Ultra plans.
+    async void LoginGemini()
+    {
+        if (setupState.Length > 0) return;
+        if (FindGemini() == null) { SetupGemini(); return; }
+        setupState = "login-gemini";
+        await SendAiStatus();
+        try
+        {
+            Directory.CreateDirectory(GeminiDir);
+            string settingsFile = Path.Combine(GeminiDir, "settings.json");
+            if (!File.Exists(settingsFile))
+                File.WriteAllText(settingsFile, "{\n  \"security\": { \"auth\": { \"selectedType\": \"oauth-personal\" } }\n}\n", new UTF8Encoding(false));
+            var r = await Exec(FindGemini(), "-p \"Reply with OK\"", Home, 600000,
+                new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" } });
+            if (!GeminiGoogleSignedIn())
+            {
+                Match url = Regex.Match(r.Item2, @"https://accounts\.google\.com/\S+");
+                if (url.Success) OpenExternal(url.Value);
+                else Toast("ההתחברות ל-Google לא הסתיימה. " + Trunc(r.Item2, 160), true);
             }
         }
         catch (Exception ex) { Toast(ex.Message, true); }
@@ -218,14 +251,17 @@ partial class HitStudent
     {
         string gemini = FindGemini();
         string apiKey = Unprotect(Str(settings, "geminiKey"));
-        if (gemini == null || apiKey.Length == 0)
+        if (gemini == null || (apiKey.Length == 0 && !GeminiGoogleSignedIn()))
             return Task.FromResult(new AiResult { Error = true, Text = "Gemini עדיין לא מחובר" });
         string args = "--output-format stream-json --approval-mode auto_edit"
                     + " --allowed-tools " + Q("run_shell_command(python),run_shell_command(py)")
                     + " --include-directories " + Q(SkillDir);
         // Gemini has no system-prompt flag in headless mode, so the instructions go first in the prompt.
         string full = (system != null ? system + "\n\n---\n\n" : "") + prompt;
-        var genv = new Dictionary<string, string> { { "GEMINI_API_KEY", apiKey }, { "GEMINI_DEFAULT_AUTH_TYPE", "gemini-api-key" } };
+        // A pasted key wins; otherwise Gemini uses the Google account the user signed in with (free or paid plan).
+        var genv = apiKey.Length > 0
+            ? new Dictionary<string, string> { { "GEMINI_API_KEY", apiKey }, { "GEMINI_DEFAULT_AUTH_TYPE", "gemini-api-key" } }
+            : new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" } };
         var buffer = new StringBuilder();
         return RunStream(key, gemini, args, cwd, full, genv, line =>
         {
@@ -343,7 +379,7 @@ partial class HitStudent
 
     bool AiReadyOrSay(Action<string> say)
     {
-        bool ok = Provider == "gemini" ? FindGemini() != null && Str(settings, "geminiKey").Length > 0 : FindClaude() != null;
+        bool ok = Provider == "gemini" ? FindGemini() != null && (Str(settings, "geminiKey").Length > 0 || GeminiGoogleSignedIn()) : FindClaude() != null;
         if (!ok) say("צריך לחבר AI קודם - לחץ על הסטטוס למעלה"); // צריך לחבר AI קודם - לחץ על הסטטוס למעלה
         return ok;
     }
@@ -359,6 +395,7 @@ partial class HitStudent
           .Append(" \"שיעור N/" + RecordingFolder + "\" = תמלול השיעור (אל תקרא את קובץ הוידאו);")
           .Append(" \"" + Notebook + "\" = המחברת של הסטודנט מ-Notability;")
           .Append(" \"" + Exams + "\" = מבחנים משנים קודמות ופתרונותיהם;")
+          .Append(" \"" + Cs24Folder + "\" = סיכומים, מחברות של סטודנטים ומבחנים מאתר CS24;")
           .Append(" \"" + CourseInfoFolder + "\" = סילבוס ומידע כללי.");
         if (File.Exists(Path.Combine(CourseDir(course), LecturerProfile)))
             sb.Append("\nיש קובץ \"" + LecturerProfile + "\" שמתאר איך המרצה חושב ובוחן - קרא אותו והשתמש בו.");
@@ -416,7 +453,9 @@ partial class HitStudent
         return result;
     }
 
-    async void AnalyzeCourse(string course)
+    async void AnalyzeCourse(string course) { await AnalyzeCourseAsync(course); }
+
+    async Task AnalyzeCourseAsync(string course)
     {
         string key = "info|" + course;
         if (aiRuns.ContainsKey(key)) return;
@@ -441,7 +480,9 @@ partial class HitStudent
         SendCourseLocal(course);
     }
 
-    async void ExamPrep(string course)
+    async void ExamPrep(string course) { await ExamPrepAsync(course); }
+
+    async Task ExamPrepAsync(string course)
     {
         string key = "exam|" + course;
         if (aiRuns.ContainsKey(key)) return;
@@ -460,6 +501,62 @@ partial class HitStudent
         Send(new { type = "courseStatus", course = course, text = result.Error ? Trunc(result.Text, 160) : "", busy = false, error = result.Error });
         SendCourseLocal(course);
         Notify(result.Error ? null : "ההכנה למבחן מוכנה", course);
+    }
+
+    // Homework help as the study skill does it: the week's study page focused on this homework, plus a copy of
+    // each homework sheet with red pointers next to every question (where to look, which formulas - never answers).
+    async void Homework(string course, int num, string title)
+    {
+        string key = "sum|" + course + "|" + num;
+        if (aiRuns.ContainsKey(key)) return;
+        if (!AiReadyOrSay(t => SectionStatus(course, num, t, false, true))) return;
+        string exercises = Path.Combine(LectureDir(course, num), Exercises);
+        if (CountFiles(exercises) == 0) { SectionStatus(course, num, "אין דפי תרגיל בשיעור הזה - הורד או הוסף אותם קודם", false, true); return; }
+        string folder = LectureFolderName(num);
+        string prompt = SkillInstruction() + " הכן אותי לשיעורי הבית של שבוע " + num + " (נושא ב-Moodle: \"" + title + "\").\n"
+            + CourseContext(course) + "\n"
+            + "דפי התרגיל בתיקייה \"" + folder + "/" + Exercises + "\". חומר השיעור ב-\"" + folder + "\", ותמלול ב-\"" + folder + "/" + RecordingFolder + "\".\n"
+            + "1. בנה (או עדכן) את \"" + StudyPages + "/שבוע-" + num + ".html\" כך שיכיל את כל מה שצריך לדעת כדי לפתור את התרגילים, עם החלק \"שימוש בתרגילים\" לכל שאלה.\n"
+            + "2. צור את קבצי ה-PDF עם המפנים בתיקייה \"" + folder + "/" + Exercises + "/עם מפנים\" לכל דף תרגיל (רק רמזים והפניות, בלי תשובות).\n"
+            + "השתמש במבחנים, בפרופיל המרצה ובחומרים מ-CS24 אם יש, כדי להראות איך המרצה מצפה שיפתרו." + WorkAlone;
+        var result = await CourseTask(key, course, s => SectionStatus(course, num, s, true, false), prompt);
+        SectionStatus(course, num, result.Error ? "נכשל: " + Trunc(result.Text, 160) : "ההכנה לשיעורי הבית מוכנה ✨", false, result.Error);
+        SendSectionLocal(course, num);
+        Notify(result.Error ? null : "ההכנה לשיעורי הבית של שיעור " + num + " מוכנה", course);
+    }
+
+    readonly HashSet<string> learning = new HashSet<string>();
+
+    // "Learn the whole course": download everything, read the syllabus, build every missing study page,
+    // and finish with the lecturer profile when there are exams.
+    async void LearnCourse(string course, System.Collections.ArrayList sections)
+    {
+        if (sections == null || !learning.Add(course)) return;
+        try
+        {
+            if (!AiReadyOrSay(t => Toast(t, true))) return;
+            Send(new { type = "learnStatus", course = course, busy = true, text = "מוריד את כל החומר..." });
+            await SyncCourseAsync(course, sections);
+            Send(new { type = "learnStatus", course = course, busy = true, text = "קורא את הסילבוס..." });
+            if (!File.Exists(Path.Combine(CourseDir(course), CourseJson))) await AnalyzeCourseAsync(course);
+            var todo = sections.Cast<Dictionary<string, object>>()
+                .Where(s => Int(s, "num") > 0 && CountFiles(LectureDir(course, Int(s, "num"))) > 0 && !File.Exists(StudyPagePath(course, Int(s, "num"))))
+                .ToList();
+            for (int i = 0; i < todo.Count; i++)
+            {
+                Send(new { type = "learnStatus", course = course, busy = true, text = "בונה דפי לימוד · שיעור " + Int(todo[i], "num") + " (" + (i + 1) + "/" + todo.Count + ")" });
+                var r = await SummarizeAsync(course, Int(todo[i], "num"), Str(todo[i], "title"));
+                if (r != null && r.Error && r.Text.IndexOf("limit", StringComparison.OrdinalIgnoreCase) >= 0) break;   // usage limit: stop, the rest can run later
+            }
+            if (CountFiles(Path.Combine(CourseDir(course), Exams)) > 0 && !File.Exists(Path.Combine(CourseDir(course), LecturerProfile)))
+            {
+                Send(new { type = "learnStatus", course = course, busy = true, text = "לומד איך המרצה חושב..." });
+                await ExamPrepAsync(course);
+            }
+            Send(new { type = "learnStatus", course = course, busy = false, text = "" });
+            Notify("הקורס נלמד - כל דפי הלימוד מוכנים", course);
+        }
+        finally { learning.Remove(course); }
     }
 
     async void Chat(string course, string text)
