@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.1.0";
+    public const string Version = "2.2.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -31,7 +31,8 @@ partial class HitStudent : Form
         { "moodle", "https://md.hit.ac.il/my/" },
         { "portal", "https://portal.hit.ac.il/" },
         { "cs24", "https://cs24.co.il/drive?d=e47d12" },
-        { "notability", "https://notability.com/" }
+        { "notability", "https://notability.com/" },
+        { "notebooklm", "https://notebooklm.google.com/" }
     };
 
     // "ui" is the app itself. "zoom" and "moodle" are hidden browsers that share one sign-in profile and only
@@ -161,6 +162,10 @@ partial class HitStudent : Form
             var core = view.CoreWebView2;
             core.IsMuted = true;
             core.Settings.AreDevToolsEnabled = false;
+            // The built-in browser offers to save the HIT username and password (in its own encrypted store)
+            // and fills them in next time; the app itself never sees them.
+            core.Settings.IsPasswordAutosaveEnabled = true;
+            core.Settings.IsGeneralAutofillEnabled = true;
             core.WebMessageReceived += OnEvalMessage;
             core.NewWindowRequested += (s, e) => { e.Handled = true; core.Navigate(e.Uri); };
         }
@@ -168,6 +173,8 @@ partial class HitStudent : Form
 
         var sc = site.CoreWebView2;
         sc.Settings.AreDevToolsEnabled = false;
+        sc.Settings.IsPasswordAutosaveEnabled = true;
+        sc.Settings.IsGeneralAutofillEnabled = true;
         sc.NewWindowRequested += (s, e) => { e.Handled = true; sc.Navigate(e.Uri); };
         sc.DownloadStarting += OnSiteDownload;
         sc.SourceChanged += delegate { Send(new { type = "siteNav", url = sc.Source, canBack = sc.CanGoBack, canForward = sc.CanGoForward }); };
@@ -374,11 +381,15 @@ partial class HitStudent : Form
             case "summarize": Summarize(course, Int(m, "num"), Str(m, "title")); break;
             case "analyzeCourse": AnalyzeCourse(course); break;
             case "examPrep": ExamPrep(course); break;
-            case "chat": Chat(course, Str(m, "text")); break;
+            case "chat": Chat(course, Str(m, "text"), ChatScope(m)); break;
             case "chatReset":
                 var meta2 = LoadMeta(course);
-                meta2.Remove("chatSession");
-                meta2.Remove("chatHistory");
+                var sessions = Dict(meta2, "chatSessions") ?? new Dictionary<string, object>();
+                sessions.Remove(ChatScope(m));
+                meta2["chatSessions"] = sessions;
+                var histories = Dict(meta2, "chatHistories") ?? new Dictionary<string, object>();
+                histories.Remove(ChatScope(m));
+                meta2["chatHistories"] = histories;
                 SaveMeta(course, meta2);
                 break;
             case "cancelAi":

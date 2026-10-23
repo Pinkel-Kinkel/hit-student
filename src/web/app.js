@@ -75,6 +75,21 @@ function md(text) {
   return html.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre>${blocks[i]}</pre>`);
 }
 
+// Usage limit: a small friendly card instead of an error, with a one-click switch to the other AI.
+function showLimit(m) {
+  if ($('limitCard')) return;
+  const other = m.provider === 'claude' ? 'gemini' : 'claude';
+  const otherName = other === 'gemini' ? 'Gemini' : 'Claude';
+  const card = h(`<div class="overlay" id="limitCard"><div class="wizard" style="width:min(460px,100%)">
+    <div class="art-top" style="height:150px">${ART.ai().replace('<svg', '<svg style="width:230px;height:140px"')}</div>
+    <div class="content"><h1 style="font-size:21px">${m.provider === 'claude' ? 'Claude' : 'Gemini'} צריך הפסקה קטנה ☕</h1>
+    <p class="lead">הגעת למגבלת השימוש לעכשיו${m.reset ? ' (מתאפס ב-' + esc(m.reset) + ')' : ''}. אפשר להמשיך מיד עם ${otherName}${m.otherReady ? '' : ', אחרי שמחברים אותו פעם אחת'}.</p>
+    <div class="foot"><div class="grow"></div><button class="ghost" data-x>אחר כך</button><button class="primary big" data-go>המשך עם ${otherName}</button></div></div></div></div>`);
+  card.querySelector('[data-x]').onclick = () => card.remove();
+  card.querySelector('[data-go]').onclick = () => { card.remove(); send({ type: 'setProvider', provider: other }); if (!m.otherReady) openWizard(1); else toast(`עברנו ל-${otherName}. אפשר לנסות שוב.`); };
+  document.body.append(card);
+}
+
 function confetti() {
   const box = h('<div class="confetti"></div>');
   const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#fbbf24', '#34d399', '#38bdf8'];
@@ -96,13 +111,19 @@ function show(view) {
   S.view = view;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   const nav = view === 'course' ? 'courses' : view;
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === nav));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === nav || (view === 'sites' && n.dataset.siteLink === S.site)));
   $('main').scrollTop = 0;
   if (view === 'sites') requestAnimationFrame(() => placeSite(true));
   if (view === 'home') renderHome();
   if (view === 'courses' && !S.courses) loadCourses();
 }
-document.querySelectorAll('.nav-item').forEach(n => n.onclick = () => show(n.dataset.view));
+document.querySelectorAll('.nav-item[data-view]').forEach(n => n.onclick = () => show(n.dataset.view));
+// Notability and NotebookLM open inside the app; files exported there go to the course chosen in the bar above the site.
+document.querySelectorAll('.nav-item[data-site-link]').forEach(n => n.onclick = () => {
+  if (S.course) { $('dlCourse').value = S.course.name; $('dlFolder').value = n.dataset.siteLink === 'notability' ? 'מחברת' : 'CS24'; syncDownloadTarget(); }
+  openSite(n.dataset.siteLink);
+  if (n.dataset.siteLink === 'notebooklm') toast('ב-NotebookLM: צור מחברת חדשה, ובחר "הוסף מקור" מתוך תיקיית הקורס. דפי הלימוד והתמלולים הם מקורות מצוינים.', { ms: 9000 });
+});
 $('brand').onclick = () => show('home');
 
 // ---------- Status ----------
@@ -179,7 +200,7 @@ function providerCard(kind) {
   const el = h(`<div class="provider${sel ? ' selected' : ''}" data-kind="${kind}">
     ${kind === 'claude' ? '<span class="chip accent tag">מומלץ</span>' : '<span class="chip ok tag">חינמי או מנוי</span>'}
     <div class="ph"><span class="pl ${kind}" data-ic="${kind}"></span><div><h3>${kind === 'claude' ? 'Claude' : 'Gemini'}</h3></div></div>
-    <p>${kind === 'claude' ? 'הכי טוב בסיכומים ארוכים ובבניית דפי לימוד. דורש חשבון Claude (Pro ומעלה מומלץ).' : 'מתחברים עם חשבון Google: חינמי, או עם המנוי שלך ל-Google AI. טוב מאוד לצ\'אט ולשאלות, קצת פחות מדויק בסיכומים ארוכים.'}</p>
+    <p>${kind === 'claude' ? 'הכי טוב בסיכומים ארוכים ובבניית דפי לימוד. דורש חשבון Claude (Pro ומעלה מומלץ).' : 'מתחברים עם חשבון Google: חינמי, או עם המנוי שלך (למשל Google AI Pro לסטודנטים). טוב מאוד לצ\'אט ולשאלות, וגם גיבוי כשנגמרת המכסה של Claude.'}</p>
     <div class="state">${state}</div><div class="act">${act}</div></div>`);
   el.onclick = (e) => {
     const t = e.target.closest('[data-act]');
@@ -209,6 +230,22 @@ function renderProviders() {
 }
 
 // ---------- Home ----------
+// For homework deadlines: whether the syllabus says it counts (known after "learn the course" read the syllabus).
+function hwNote(e) {
+  if (e.mod !== 'assign') return '';
+  const c = (S.courses || []).find(x => x.id === e.courseId);
+  const info = c && c.local && c.local.info;
+  if (!info || info.homeworkRequired == null) return '';
+  return info.homeworkRequired ? ' · <span class="chip warn">חובה להגשה</span>' : ' · <span class="chip">לא חובה, אבל מומלץ ללמידה</span>';
+}
+
+// "תשפז_א" / "תשפ"ו א'" in a course name or code -> "תשפ״ז · סמסטר א"
+function semesterOf(c) {
+  const m = ((c.short || '') + ' ' + (c.name || '')).match(/(תש[א-ת]["״']?[א-ת])[_\s-]*([אבג])['׳]?(?![א-ת])/);
+  if (!m) return c.current ? 'הסמסטר הנוכחי' : 'סמסטרים קודמים';
+  const y = m[1].replace(/["״']/g, '');
+  return `${y.slice(0, -1)}״${y.slice(-1)} · סמסטר ${m[2]}`;
+}
 function renderHome() {
   const name = firstName(S.userName || S.settings.userName);
   $('today').textContent = dayFmt.format(new Date());
@@ -230,7 +267,7 @@ function renderHome() {
       const d = new Date(e.when * 1000);
       const soon = e.when * 1000 - Date.now() < 2 * 86400000;
       const el = h(`<div class="deadline${e.overdue ? ' over' : soon ? ' soon' : ''}" style="--i:${i}"><div class="cal"><b>${d.getDate()}</b><small>${esc(monFmt.format(d))}</small></div>
-        <div class="info"><div class="name" dir="auto">${esc(e.name)}</div><div class="course" dir="auto">${esc(e.course)}</div></div><span class="chip${e.overdue ? ' bad' : soon ? ' warn' : ''}">${esc(relDay(e.when))}</span></div>`);
+        <div class="info"><div class="name" dir="auto">${esc(e.name)}</div><div class="course" dir="auto">${esc(e.course)}${hwNote(e)}</div></div><span class="chip${e.overdue ? ' bad' : soon ? ' warn' : ''}">${esc(relDay(e.when))}</span></div>`);
       el.onclick = () => openSite('moodle', e.url);
       box.append(el);
     });
@@ -290,7 +327,15 @@ function renderCourses() {
     return;
   }
   $('coursesState').innerHTML = '';
-  list.forEach((c, i) => g.append(courseCard(c, i)));
+  // One group per semester, current semester first.
+  const groups = new Map();
+  list.forEach(c => { const k = semesterOf(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+  const keys = [...groups.keys()].sort((a, b) => (groups.get(b).some(c => c.current) - groups.get(a).some(c => c.current)) || b.localeCompare(a, 'he'));
+  let i = 0;
+  keys.forEach(k => {
+    g.append(h(`<h2 class="semester" style="grid-column:1/-1;margin:${i ? 18 : 0}px 2px 2px">${esc(k)}</h2>`));
+    groups.get(k).forEach(c => g.append(courseCard(c, i++)));
+  });
 }
 $('refreshCourses').onclick = loadCourses;
 $('showAll').onchange = renderCourses;
@@ -309,6 +354,7 @@ function openCourse(c) {
   setTab('lessons');
   $('lectures').innerHTML = '';
   for (let i = 0; i < 6; i++) $('lectures').append(h('<div class="skeleton" style="height:70px;border-radius:16px;margin-bottom:10px"></div>'));
+  S.chatScope = 'course'; S.chatLogs = {}; S.pendingChat = null;
   resetChat();
   show('course');
   send({ type: 'openCourse', id: c.id, course: c.name });
@@ -328,7 +374,7 @@ $('learnAll').onclick = () => {
   send({ type: 'learnCourse', course: S.course.name, sections: plainSections() });
   toast(`${aiName()} מתחיל ללמוד את כל הקורס: מוריד הכל, קורא את הסילבוס, בונה דף לימוד לכל שיעור ולומד את המרצה מהמבחנים. זה לוקח זמן, אפשר להמשיך לעבוד.`, { ms: 8000 });
 };
-$('examPrepBtn').onclick = () => { setTab('exams'); };
+$('examPrepBtn').onclick = () => { setTab('exams'); setChatScope('exam'); };
 $('toggleChat').onclick = () => { S.chatHidden = !S.chatHidden; $('courseBody').classList.toggle('no-chat', S.chatHidden); $('chat').hidden = S.chatHidden; };
 $('lecturer').onchange = () => S.course && send({ type: 'setLecturer', course: S.course.name, name: $('lecturer').value.trim() });
 
@@ -340,6 +386,82 @@ function setTab(tab) {
   if (tab === 'info') renderInfo();
   if (tab === 'exams') renderExams();
   if (tab === 'notes') renderNotes();
+  if (tab === 'setup') renderSetup();
+  if (tab === 'recs') renderRecs();
+}
+
+// ---------- "How to start": everything the course needs, before the AI starts building ----------
+function setupSteps() {
+  const L = S.local || {};
+  const files = S.sections.reduce((a, s) => a + ((s.local && s.local.files) || 0), 0);
+  const zoomTool = S.sections.flatMap(s => s.items).find(i => i.mod === 'lti' && /zoom|זום/i.test(i.name));
+  const videos = S.sections.reduce((a, s) => a + ((s.local && s.local.videos) || 0), 0);
+  return [
+    { key: 'moodle', done: files > 0, title: 'חומרי הקורס מה-Moodle',
+      text: files ? `${files} קבצים ירדו לתיקיית הקורס. ממשיך להתעדכן כל פעם שנכנסים.` : 'יורדים עכשיו לבד. זה לוקח דקה-שתיים.',
+      act: files ? null : ['עדכן עכשיו', () => syncCourse(false)] },
+    { key: 'lecturer', done: !!$('lecturer').value.trim(), title: 'מי המרצה',
+      text: $('lecturer').value.trim() ? $('lecturer').value.trim() : 'כתוב את שם המרצה למעלה, ליד שם הקורס. זה עוזר להתאים את החומר לסגנון שלו.' },
+    { key: 'exams', done: (L.exams || 0) > 0, title: 'מבחנים משנים קודמות',
+      text: L.exams ? `${L.exams} קבצי מבחנים בקורס.` : 'הכי חשוב להכנה למבחן. ב-CS24 יש מבחנים ופתרונות משנים קודמות: לחץ, בחר את הקורס שם, והורד. הקבצים נשמרים כאן לבד.',
+      act: ['חפש ב-CS24', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); }] },
+    { key: 'recs', done: videos > 0, optional: !zoomTool, title: 'הקלטות השיעורים',
+      text: videos ? `${videos} הקלטות עם תמלול.` : zoomTool ? 'לקורס יש כניסה לזום עם הקלטות. בלשונית "הקלטות" אפשר לפתוח אותן ולהוריד.' : 'אין הקלטות בקורס הזה. זה בסדר, הכל יעבוד גם בלעדיהן.',
+      act: zoomTool && !videos ? ['להקלטות', () => setTab('recs')] : null },
+    { key: 'cs24', done: (L.cs24 || 0) > 0, optional: true, title: 'סיכומים ומחברות מ-CS24',
+      text: L.cs24 ? `${L.cs24} קבצים מ-CS24.` : 'לא חובה. מחברות של סטודנטים מהקורס עוזרות להבין את החומר.',
+      act: ['פתח את CS24', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); }] },
+    { key: 'notes', done: (L.notes || 0) > 0, optional: true, title: 'המחברת שלך (Notability)',
+      text: L.notes ? `${L.notes} דפי מחברת.` : 'לא חובה. אם אתה כותב ב-Notability, חבר את המחברת של הקורס.',
+      act: ['חבר', () => setTab('notes')] }
+  ];
+}
+function renderSetup() {
+  const p = $('pane-setup'); p.innerHTML = '';
+  const steps = setupSteps();
+  const required = steps.filter(s => !s.optional);
+  const ready = required.every(s => s.done);
+  const card = h(`<div class="card pad-lg"><h2>${ready ? 'הכל מוכן להתחיל ללמוד 🎉' : 'כמה דברים לפני שמתחילים'}</h2>
+    <p class="muted" style="margin:6px 0 16px">${ready ? `${aiName()} יבנה דף לימוד לכל שיעור, עזרה לשיעורי הבית והכנה למבחן לפי המבחנים הקודמים.` : 'ככל שיש יותר חומר, הסיכומים וההכנה למבחן מדויקים יותר. מה שמסומן "לא חובה" אפשר לדלג.'}</p>
+    <div class="setup-list"></div><div class="row" style="margin-top:18px"><button class="primary big" id="startLearning"><span data-ic="sparkles"></span>התחל ללמוד את הקורס</button></div></div>`);
+  steps.forEach(s => {
+    const row = h(`<div class="check-row${s.done ? ' ok' : ''}"><div class="ci" data-ic="${s.done ? 'check' : 'clock'}"></div><div class="grow"><b>${s.title}${s.optional ? ' <span class="chip">לא חובה</span>' : ''}</b><small dir="auto"></small></div></div>`);
+    row.querySelector('small').textContent = s.text;
+    if (s.act && !s.done) { const b = h(`<button class="small">${s.act[0]}</button>`); b.onclick = s.act[1]; row.append(b); }
+    card.querySelector('.setup-list').append(row);
+  });
+  const go = card.querySelector('#startLearning');
+  go.disabled = !steps[0].done;
+  go.onclick = () => { $('learnAll').click(); setTab('lessons'); };
+  p.append(card);
+  $('tabSetup').textContent = required.filter(s => !s.done).length || '✓';
+}
+
+// ---------- Recordings of the course ----------
+function renderRecs() {
+  const p = $('pane-recs'); p.innerHTML = '';
+  const zoomTool = S.sections.flatMap(s => s.items).find(i => i.mod === 'lti' && /zoom|זום/i.test(i.name));
+  if (zoomTool) {
+    const c = h(`<div class="card pad-lg" style="margin-bottom:14px"><div class="row" style="gap:14px"><span class="ic zoom" data-ic="video"></span>
+      <div class="grow"><b>הקלטות הזום של הקורס</b><div class="muted" style="font-size:12.5px">נפתח את עמוד הזום של הקורס כאן באפליקציה. נכנסים ל-Cloud Recordings, בוחרים שיעור ולוחצים להורדה. ההקלטה נשמרת בתיקיית ההקלטות של הקורס.</div></div>
+      <button class="primary">פתח את הקלטות הזום</button></div></div>`);
+    c.querySelector('button').onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'הקלטה'; syncDownloadTarget(); openSite('moodle', zoomTool.url); };
+    p.append(c);
+  }
+  const list = h('<div class="card pad-lg"><h2>הקלטה לכל שיעור</h2><p class="muted" style="margin:6px 0 12px">יש לך קישור להקלטה של שיעור? הדבק אותו ליד השיעור, וההקלטה והתמלול יורדים לתיקייה שלו.</p><div class="rec-list"></div></div>');
+  S.sections.filter(s => s.num > 0 && s.items.length).forEach(s => {
+    const job = lessonJob(s.num);
+    const has = s.local && s.local.videos;
+    const row = h(`<div class="check-row${has ? ' ok' : ''}"><div class="ci" data-ic="${has ? 'check' : 'video'}"></div><div class="grow"><b dir="auto"></b><small></small></div>
+      <input type="text" class="ltr" placeholder="קישור Zoom" style="max-width:260px;height:34px"><button class="small">הורד</button></div>`);
+    row.querySelector('b').textContent = 'שיעור ' + s.num + ' · ' + s.title;
+    row.querySelector('small').textContent = job ? job.status : has ? 'יש הקלטה ותמלול' : 'אין עדיין הקלטה';
+    const go = () => { const v = row.querySelector('input').value.trim(); if (v) { send({ type: 'addRecording', course: S.course.name, num: s.num, url: v }); row.querySelector('input').value = ''; } };
+    row.querySelector('button').onclick = go;
+    row.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    list.querySelector('.rec-list').append(row);
+  });
+  p.append(list);
 }
 
 function renderCourseHeader() {
@@ -421,6 +543,7 @@ function fillLecture(el, s) {
   });
   btn('plus', 'הוסף קבצים', 'ghost', () => send({ type: 'addFiles', course: course.name, folder: String(s.num) }));
   if (L.exists) btn('folder', 'תיקייה', 'ghost', () => send({ type: 'openPath', path: L.dir }));
+  if (s.num > 0) btn('chat', 'שאל על השיעור', 'ghost', () => setChatScope('lesson:' + s.num));
 
   const job = lessonJob(s.num);
   const st = el.querySelector('.status');
@@ -492,7 +615,7 @@ function renderExams() {
   const busy = S.examBusy;
   const card = h(`<div class="card pad-lg">
     <div class="row" style="align-items:flex-start;gap:18px"><div style="width:150px;flex:none">${ART.chat().replace('<svg', '<svg style="width:150px;height:104px"')}</div>
-    <div class="grow"><h2>המוח של המרצה</h2><p class="muted" style="margin:6px 0 14px">מוסיפים מבחנים משנים קודמות, עדיף עם פתרונות. ${aiName()} קורא אותם יחד עם ההרצאות והתרגילים, ולומד איך המרצה חושב: אילו נושאים חוזרים, אילו שאלות הוא נותן, ואיך הוא רוצה שתפתור. בסוף מקבלים פרופיל של המרצה ודף הכנה למבחן.</p>
+    <div class="grow"><h2>הכנה למבחן</h2><p class="muted" style="margin:6px 0 14px">מוסיפים מבחנים משנים קודמות, עדיף עם פתרונות. ${aiName()} קורא אותם יחד עם ההרצאות והתרגילים ומבין אילו נושאים חוזרים, איזה שאלות המרצה נותן ואיך הוא רוצה שתפתור. בסוף מקבלים דף הכנה למבחן, ואפשר להתאמן בשאלות בסגנון שלו.</p>
     <div class="row wrap"><span class="chip ${L.exams ? 'ok' : ''}">${L.exams || 0} קבצי מבחנים</span>${L.lecturerProfile ? '<span class="chip ok">פרופיל מרצה מוכן ✓</span>' : ''}${L.examPrep ? '<span class="chip ok">דף הכנה מוכן ✓</span>' : ''}</div></div></div>
     <div class="row wrap" style="margin-top:18px" id="examActs"></div></div>`);
   p.append(card);
@@ -502,7 +625,8 @@ function renderExams() {
   add('book', 'סיכומים ומחברות מ-CS24', 'soft', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); toast('סיכומים ומחברות שתוריד מ-CS24 יישמרו בקורס, וה-AI ישתמש בהם'); });
   add('plus', 'הוסף מבחנים מהמחשב', 'ghost', () => send({ type: 'addFiles', course: S.course.name, folder: 'מבחנים' }));
   if (L.exams) add('folder', 'תיקיית המבחנים', 'ghost', () => send({ type: 'openPath', path: L.dir + '\\מבחנים' }));
-  add('brain', busy ? 'עובד על זה...' : (L.lecturerProfile ? 'בנה מחדש' : 'בנה את המוח של המרצה'), 'primary', () => { S.examBusy = true; send({ type: 'examPrep', course: S.course.name }); renderExams(); }, busy || !L.exams);
+  add('sparkles', busy ? 'עובד על זה...' : (L.examPrep ? 'בנה מחדש את דף ההכנה' : 'בנה דף הכנה למבחן'), 'primary', () => { S.examBusy = true; send({ type: 'examPrep', course: S.course.name }); renderExams(); }, busy || !L.exams);
+  add('chat', 'התאמן בשאלות', 'soft', () => setChatScope('exam'), !L.exams);
   if (L.examPrep) add('external', 'דף ההכנה למבחן', 'primary', () => send({ type: 'openPath', path: L.examPrep }));
   if (L.lecturerProfile) add('user', 'פרופיל המרצה', '', () => send({ type: 'openPath', path: L.lecturerProfile }));
 }
@@ -540,22 +664,47 @@ function renderNotes() {
 }
 
 // ---------- Chat ----------
+// Each course has separate conversations: the whole course, each lesson ("lesson:N"), and exam practice ("exam").
+S.chatScope = 'course';
+S.chatLogs = {};
+function scopeTitle(scope) {
+  if (scope === 'exam') return 'אימון למבחן';
+  if (scope.startsWith('lesson:')) return 'שיעור ' + scope.slice(7);
+  return 'כל הקורס';
+}
+function setChatScope(scope) {
+  if (S.chatBusy) return toast('רגע, העוזר עוד עונה');
+  S.chatScope = scope;
+  if (S.chatHidden) $('toggleChat').click();
+  resetChat();
+  (S.chatLogs[scope] || []).forEach(x => addMsg(x.role, x.text, true));
+  if (scope === 'exam' && !(S.chatLogs.exam || []).length) { $('chatText').value = 'בוא נתחיל אימון. תן לי שאלה ראשונה בסגנון המבחנים של המרצה.'; }
+  $('chatText').focus();
+}
 function resetChat() {
-  $('chatSub').textContent = `${aiName()} · מכיר את כל החומר שהורדת`;
+  const scope = S.chatScope;
+  $('chatTitle').textContent = 'העוזר של הקורס · ' + scopeTitle(scope);
+  $('chatSub').textContent = `${aiName()} · ${scope === 'exam' ? 'שואל אותך שאלות בסגנון המבחנים' : 'מכיר את כל החומר שהורד'}`;
+  $('chatBack').hidden = scope === 'course';
   $('msgs').innerHTML = '';
-  const e = h(`<div class="chat-empty">${ART.chat().replace('<svg', '<svg class="art"')}<b>שאל אותי כל דבר על הקורס</b>אני קורא את המצגות, התרגילים, התמלולים והמבחנים שהורדת.
-    <div class="suggest"></div></div>`);
-  const qs = [['📝', 'תסכם לי את השיעור האחרון'], ['🎯', 'מה הכי חשוב למבחן עד עכשיו?'], ['💡', 'תעזור לי להתחיל את שיעורי הבית האחרונים, רמזים בלבד'], ['🧠', 'איזה סוג שאלות המרצה הזה אוהב לשאול?']];
+  const intro = scope === 'exam' ? '<b>אימון למבחן</b>אני אשאל אותך שאלות בסגנון של המרצה, לפי המבחנים הקודמים, ואבדוק את התשובות שלך.'
+    : scope.startsWith('lesson:') ? `<b>שיחה על ${scopeTitle(scope)}</b>שאל על החומר של השיעור, על התרגיל או על מה שלא היה ברור בהרצאה.`
+    : '<b>שאל אותי כל דבר על הקורס</b>אני קורא את המצגות, התרגילים, התמלולים והמבחנים. אם חסר משהו, אגיד לך בדיוק מאיפה להביא אותו.';
+  const e = h(`<div class="chat-empty">${ART.chat().replace('<svg', '<svg class="art"')}${intro}<div class="suggest"></div></div>`);
+  const qs = scope === 'exam' ? [['🎯', 'תן לי שאלה ראשונה בסגנון המבחנים של המרצה'], ['📊', 'מה הנושאים שהכי חוזרים במבחנים?']]
+    : scope.startsWith('lesson:') ? [['📝', `תסכם לי את ${scopeTitle(scope)}`], ['💡', 'תעזור לי להתחיל את התרגיל של השיעור, רמזים בלבד'], ['❓', 'מה הכי חשוב לזכור מהשיעור הזה?']]
+    : [['📝', 'מה למדנו עד עכשיו בקורס?'], ['🎯', 'מה הכי חשוב למבחן?'], ['🧭', 'מה עוד חסר לך כדי לעזור לי בקורס הזה?']];
   for (const [em, q] of qs) { const b = h(`<button class="ghost"></button>`); b.textContent = em + '  ' + q; b.onclick = () => { $('chatText').value = q; sendChat(); }; e.querySelector('.suggest').append(b); }
   $('msgs').append(e);
 }
-function addMsg(role, text) {
+function addMsg(role, text, replay) {
   const empty = $('msgs').querySelector('.chat-empty'); if (empty) empty.remove();
   const d = document.createElement('div');
   d.className = 'msg ' + role; d.dir = 'auto';
   if (role === 'assistant') d.innerHTML = md(text); else d.textContent = text;
   $('msgs').append(d);
   $('msgs').scrollTop = $('msgs').scrollHeight;
+  if (!replay && role !== 'tool') (S.chatLogs[S.chatScope] = S.chatLogs[S.chatScope] || []).push({ role, text });
   return d;
 }
 let thinking = null;
@@ -572,13 +721,14 @@ function sendChat() {
   $('chatText').value = ''; autosize();
   S.chatBusy = true; $('chatSend').disabled = true;
   setThinking('קורא את החומר...');
-  send({ type: 'chat', course: S.course.name, text });
+  send({ type: 'chat', course: S.course.name, scope: S.chatScope, text });
 }
 $('chatSend').onclick = sendChat;
 $('chatText').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
 const autosize = () => { const t = $('chatText'); t.style.height = 'auto'; t.style.height = Math.min(170, t.scrollHeight) + 'px'; };
 $('chatText').addEventListener('input', autosize);
-$('newChat').onclick = () => { if (!S.course || S.chatBusy) return; send({ type: 'chatReset', course: S.course.name }); resetChat(); };
+$('newChat').onclick = () => { if (!S.course || S.chatBusy) return; send({ type: 'chatReset', course: S.course.name, scope: S.chatScope }); S.chatLogs[S.chatScope] = []; resetChat(); };
+$('chatBack').onclick = () => setChatScope('course');
 
 // ---------- Recordings ----------
 const jobIcons = { queued: 'clock', running: 'spin', done: 'check', failed: 'alert' };
@@ -613,7 +763,8 @@ function refreshJobs() {
   if (!S.jobs.size) e.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>אין הורדות עכשיו</b>הקלטה של שיעור מוסיפים מתוך השיעור, בכפתור "הוסף הקלטה".</div>`));
   const active = [...S.jobs.values()].filter(j => j.state === 'running' || j.state === 'queued').length;
   $('jobCount').hidden = !active; $('jobCount').textContent = active;
-  $('navDownloads').hidden = !S.jobs.size;
+  $('navDownloads').hidden = true;   // recordings live inside each course now
+  if (S.view === 'course' && S.tab === 'recs') renderRecs();
 }
 // The recording that is downloading for a lesson right now, if any.
 function lessonJob(num) {
@@ -755,7 +906,8 @@ function onMessage(m) {
       if (!m.lecturer && m.lecturerGuess && m.lecturerGuess.length) { $('lecturer').value = m.lecturerGuess[0]; send({ type: 'setLecturer', course: S.course.name, name: m.lecturerGuess[0] }); toast(`זיהיתי את המרצה: ${m.lecturerGuess[0]}. אפשר לתקן למעלה.`); }
       else if (!m.lecturer) setTimeout(() => $('lecturer').focus(), 600);
       renderCourseHeader(); renderLectures();
-      if (S.tab !== 'lessons') setTab(S.tab);
+      // A course that hasn't been set up yet opens on "how to start"; afterwards on the lessons.
+      setTab(S.local && S.local.studyPages ? 'lessons' : 'setup');
       // The AI reads the files on this computer, so new material is pulled from Moodle as soon as the course opens.
       if (S.settings.autoSync !== false) syncCourse(true);
       break;
@@ -774,7 +926,12 @@ function onMessage(m) {
       s.status = m.text; s.statusError = m.error; if (!s.aiBusy) s.busy = m.busy;
       refreshSection(m.num); break;
     }
-    case 'sectionLocal': { if (!S.course || S.course.name !== m.course) break; const s = section(m.num); if (s) { s.local = m.local; refreshSection(m.num); } break; }
+    case 'sectionLocal': {
+      if (!S.course || S.course.name !== m.course) break;
+      const s = section(m.num); if (s) { s.local = m.local; refreshSection(m.num); }
+      if (S.tab === 'setup' || S.tab === 'recs') setTab(S.tab);
+      break;
+    }
     case 'courseLocal':
       if (!S.course || S.course.name !== m.course) break;
       S.local = m.local; S.notability = m.notability; renderCourseHeader();
@@ -785,6 +942,12 @@ function onMessage(m) {
       if (!S.course || S.course.name !== m.course) break;
       courseStatus(m.text, m.busy, m.error);
       if (!m.busy) { S.infoBusy = false; S.examBusy = false; if (S.tab !== 'lessons') setTab(S.tab); }
+      if (m.synced && S.pendingChat) {
+        const p = S.pendingChat; S.pendingChat = null;
+        if (p.scope !== S.chatScope) setChatScope(p.scope);
+        S.chatBusy = true; $('chatSend').disabled = true; setThinking('החומר ירד. קורא אותו...');
+        send({ type: 'chat', course: S.course.name, scope: p.scope, text: p.text });
+      }
       break;
     case 'aiRun': {
       const parts = m.key.split('|');
@@ -794,9 +957,10 @@ function onMessage(m) {
         s.aiBusy = m.busy; if (!m.busy) s.busy = false;
         refreshSection(s.num);
         const log = document.querySelector(`.lecture[data-num="${s.num}"] .ai-log`);
-        if (log && m.busy) { log.innerHTML = ''; log.classList.add('show'); }
-        if (log && !m.busy && m.result) { const d = document.createElement('div'); d.className = 'final'; d.dir = 'auto'; d.innerHTML = md(m.result); log.append(d); log.scrollTop = log.scrollHeight; }
-      } else if (!m.busy && m.result && !m.error) toast(parts[0] === 'info' ? 'ניתוח הקורס מוכן' : 'המוח של המרצה מוכן');
+        // Plain steps while it works; at the end just "ready" - the AI's own notes aren't for the student.
+        if (log && m.busy) { log.innerHTML = '<div class="phase now">מתחיל...</div>'; log.classList.add('show'); }
+        if (log && !m.busy) { log.querySelectorAll('.phase').forEach(p => p.classList.remove('now')); log.append(h(`<div class="phase ${m.error ? 'bad' : 'done'}">${m.error ? 'לא הצליח. אפשר לנסות שוב.' : 'מוכן ✓'}</div>`)); }
+      } else if (!m.busy && !m.error) toast(parts[0] === 'info' ? 'המידע על הקורס מוכן' : 'ההכנה למבחן מוכנה');
       break;
     }
     case 'aiLog': {
@@ -804,17 +968,27 @@ function onMessage(m) {
       if (!S.course || S.course.name !== parts[1] || parts[0] !== 'sum') break;
       const log = document.querySelector(`.lecture[data-num="${parts[2]}"] .ai-log`); if (!log) break;
       log.classList.add('show');
-      const d = document.createElement('div'); d.dir = 'auto'; d.textContent = m.text; log.append(d); log.scrollTop = log.scrollHeight;
+      log.querySelectorAll('.phase').forEach(p => { p.classList.remove('now'); if (!p.classList.contains('bad')) p.classList.add('done'); });
+      const d = document.createElement('div'); d.className = 'phase now'; d.textContent = m.text; log.append(d);
       break;
     }
     case 'chat':
       if (!S.course || S.course.name !== m.course) break;
+      if ((m.scope || 'course') !== S.chatScope) { (S.chatLogs[m.scope] = S.chatLogs[m.scope] || []).push({ role: m.role, text: m.text }); break; }
       if (thinking) { thinking.remove(); thinking = null; }
+      if (m.role === 'limit') { addMsg('error', m.text); break; }
       addMsg(m.role, m.text);
       if (S.chatBusy && m.role === 'assistant') setThinking('ממשיך...');
       break;
-    case 'chatTool': if (S.course && S.course.name === m.course) setThinking(m.text); break;
+    case 'chatTool': if (S.course && S.course.name === m.course && (m.scope || 'course') === S.chatScope) setThinking(m.text); break;
     case 'chatDone': if (thinking) { thinking.remove(); thinking = null; } S.chatBusy = false; $('chatSend').disabled = false; break;
+    case 'needSync':
+      // The assistant had nothing to read yet: download the course, then ask the same question again.
+      if (!S.course || S.course.name !== m.course) break;
+      S.pendingChat = { scope: m.scope, text: m.text };
+      syncCourse(true);
+      break;
+    case 'aiLimit': showLimit(m); break;
     case 'job': renderJob(m); break;
     case 'log': jobLog(m.id, m.line); break;
     case 'clipboard': {

@@ -27,6 +27,8 @@
     <button class="nav-item" data-view="courses"><span class="ni" data-ic="book"></span><span class="nav-text">הקורסים שלי</span></button>
     <button class="nav-item" data-view="recordings" id="navDownloads" hidden><span class="ni" data-ic="download"></span><span class="nav-text">הורדות</span><span class="count" id="jobCount" hidden>0</span></button>
     <button class="nav-item" data-view="sites"><span class="ni" data-ic="globe"></span><span class="nav-text">אתרים</span></button>
+    <button class="nav-item" data-site-link="notability"><span class="ni" data-ic="note"></span><span class="nav-text">המחברת שלי</span></button>
+    <button class="nav-item" data-site-link="notebooklm"><span class="ni" data-ic="book"></span><span class="nav-text">NotebookLM</span></button>
     <button class="nav-item" data-view="settings"><span class="ni" data-ic="settings"></span><span class="nav-text">הגדרות</span></button>
     <div class="grow"></div>
     <button class="theme-toggle" id="themeToggle" title="מצב בהיר / כהה"><span id="themeIcon"></span><span class="nav-text" id="themeText">מצב כהה</span></button>
@@ -97,21 +99,25 @@
         <div class="course-actions">
           <button class="primary" id="learnAll"><span data-ic="brain"></span>למד את כל הקורס</button>
           <button class="soft" id="syncAll"><span data-ic="download"></span>עדכן מה-Moodle</button>
-          <button class="soft" id="examPrepBtn"><span data-ic="brain"></span>המוח של המרצה</button>
+          <button class="soft" id="examPrepBtn"><span data-ic="exam"></span>אימון למבחן</button>
           <button id="openCourseFolder"><span data-ic="folder"></span>תיקיית הקורס</button>
           <button id="reloadCourse" class="ghost"><span data-ic="refresh"></span>רענן</button>
           <button id="toggleChat" class="ghost"><span data-ic="chat"></span>צ'אט</button>
         </div>
         <div class="tabs" id="courseTabs">
+          <button data-tab="setup">איך מתחילים<span class="badge" id="tabSetup"></span></button>
           <button class="active" data-tab="lessons">שיעורים<span class="badge" id="tabLessons"></span></button>
+          <button data-tab="recs">הקלטות</button>
           <button data-tab="info">מידע על הקורס</button>
-          <button data-tab="exams">מבחנים<span class="badge" id="tabExams"></span></button>
+          <button data-tab="exams">הכנה למבחן<span class="badge" id="tabExams"></span></button>
           <button data-tab="notes">המחברת שלי<span class="badge" id="tabNotes"></span></button>
         </div>
         <div class="status-bar" id="courseStatus" hidden></div>
         <div class="course-body" id="courseBody">
           <div>
+            <div class="tab-pane" id="pane-setup"></div>
             <div class="tab-pane active" id="pane-lessons"><div id="lectures"></div></div>
+            <div class="tab-pane" id="pane-recs"></div>
             <div class="tab-pane" id="pane-info"></div>
             <div class="tab-pane" id="pane-exams"></div>
             <div class="tab-pane" id="pane-notes"></div>
@@ -119,7 +125,8 @@
           <aside class="chat" id="chat">
             <div class="chat-head">
               <div class="avatar" data-ic="sparkles"></div>
-              <div class="grow"><b>העוזר של הקורס</b><small id="chatSub">מכיר את כל החומר שהורדת</small></div>
+              <div class="grow"><b id="chatTitle">העוזר של הקורס</b><small id="chatSub">מכיר את כל החומר שהורד</small></div>
+              <button class="small ghost" id="chatBack" hidden title="חזרה לשיחה על כל הקורס">כל הקורס</button>
               <button class="small ghost" id="newChat" title="שיחה חדשה"><span data-ic="plus"></span>חדשה</button>
             </div>
             <div class="msgs" id="msgs"></div>
@@ -149,6 +156,7 @@
           <button data-site="portal">פורטל מידע אישי</button>
           <button data-site="cs24">CS24</button>
           <button data-site="notability">Notability</button>
+          <button data-site="notebooklm">NotebookLM</button>
         </div>
         <button class="small icon ghost" id="siteBack" title="אחורה"><span data-ic="back"></span></button>
         <button class="small icon ghost" id="siteForward" title="קדימה"><span data-ic="forward"></span></button>

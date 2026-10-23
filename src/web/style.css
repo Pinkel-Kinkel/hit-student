@@ -337,6 +337,13 @@ html[data-theme=dark] .ic.resource, html[data-theme=dark] .ic.file { background:
 .ai-log.show { display: block; animation: viewIn .3s var(--ease); }
 .ai-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
 .ai-log div::before { content: "\2022  "; color: var(--accent); }
+.ai-log .phase { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12.5px; }
+.ai-log .phase::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--surface-3); flex: none; }
+.ai-log .phase.now { color: var(--text); font-weight: 600; }
+.ai-log .phase.now::before { border-color: var(--surface-3); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.ai-log .phase.done::before { background: var(--ok); border-color: var(--ok); }
+.ai-log .phase.bad { color: var(--bad); }
+.ai-log .phase.bad::before { background: var(--bad); border-color: var(--bad); }
 .ai-log .final { white-space: normal; color: var(--text); margin-top: 8px; }
 .ai-log .final::before { content: none; }
 
