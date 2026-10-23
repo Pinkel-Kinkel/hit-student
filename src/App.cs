@@ -16,7 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 partial class HitStudent : Form
 {
     public const string Version = "2.1.0";
-    const string Repo = "Pinkel-Kinkel/hit-recordings";
+    const string Repo = "Pinkel-Kinkel/hit-student";
+    // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
+    static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
 
     static readonly string AppDir = AppDomain.CurrentDomain.BaseDirectory;
     static readonly string WebDir = Path.Combine(AppDir, "web");
@@ -538,11 +540,10 @@ partial class HitStudent : Form
                 updateVersion = tag;
                 updatePage = Str(rel, "html_url");
                 updateZipUrl = updateShaUrl = null;
-                string prefix = "https://github.com/" + Repo + "/releases/download/";
                 foreach (Dictionary<string, object> a in (rel["assets"] as System.Collections.ArrayList ?? new System.Collections.ArrayList()))
                 {
                     string url = Str(a, "browser_download_url");
-                    if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!RepoNames.Any(r => url.StartsWith("https://github.com/" + r + "/releases/download/", StringComparison.OrdinalIgnoreCase))) continue;
                     if (Str(a, "name") == "HIT-Student.zip") updateZipUrl = url;
                     if (Str(a, "name") == "HIT-Student.zip.sha256") updateShaUrl = url;
                 }
