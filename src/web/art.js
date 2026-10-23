@@ -45,7 +45,9 @@ const IC = {
 const ART = {
   // SummarIT's own mascot: a student with dark hair, glasses, a hoodie and a graduation cap, giving a thumbs up.
   // The arm swings up (.mascot-arm) and a small gleam flashes on the smile (.mascot-gleam).
-  mascot: (cls = '') => `<svg class="mascot ${cls}" viewBox="0 0 200 200" fill="none">
+  // Its gradient / clip ids get a unique suffix per copy: with duplicate ids, a hidden copy "wins" and the others go blank.
+  mascot: (cls = '') => ART._mascotSvg(cls).replace(/ms(Bg|Hood|Clip)/g, '$&' + (ART._mi = (ART._mi || 0) + 1)),
+  _mascotSvg: (cls) => `<svg class="mascot ${cls}" viewBox="0 0 200 200" fill="none">
     <defs>
       <linearGradient id="msBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#ec4899"/></linearGradient>
       <linearGradient id="msHood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#3730a3"/></linearGradient>

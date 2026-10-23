@@ -21,7 +21,8 @@ partial class HitStudent
     const string Exams = "מבחנים";                                    // מבחנים
     const string CourseInfoFolder = "מידע על הקורס"; // מידע על הקורס
     const string General = "כללי";                                               // כללי
-    const string RecordingFolder = "הקלטה";                                 // הקלטה
+    const string RecordingFolder = "הקלטה";                                 // הקלטה (inside a lesson)
+    const string LectureRecordings = "הקלטות";                              // הקלטות (course level, "הרצאה N")
     const string StudyPages = "דפי לימוד";                   // דפי לימוד
     const string Notebook = "מחברת";                                         // מחברת
     const string LecturerProfile = "פרופיל המרצה.md"; // פרופיל המרצה.md
@@ -428,7 +429,10 @@ return out;";
             notes = CountFiles(Path.Combine(dir, Notebook)), cs24 = CountFiles(Path.Combine(dir, Cs24Folder)), studyPages = pageCount, info = courseInfo,
             examPrep = File.Exists(prep) ? prep : null, lecturerProfile = File.Exists(profile) ? profile : null,
             courseInfoMd = File.Exists(Path.Combine(dir, CourseInfoFolder + ".md")) ? Path.Combine(dir, CourseInfoFolder + ".md") : null,
-            setupDone = Bool(LoadMeta(course), "setupDone")
+            setupDone = Bool(LoadMeta(course), "setupDone"),
+            lectureRecordings = Directory.Exists(Path.Combine(dir, LectureRecordings))
+                ? Directory.GetFiles(Path.Combine(dir, LectureRecordings), "*.mp4").OrderBy(f => f).Select(f => new { name = Path.GetFileNameWithoutExtension(f), path = f }).ToList<object>()
+                : new List<object>()
         };
     }
 

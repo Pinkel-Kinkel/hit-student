@@ -459,6 +459,28 @@ function moodleSummary() {
     zoomTool: items.some(i => i.mod === 'lti' && /zoom|זום/i.test(i.name))
   };
 }
+// Recordings are numbered by lecture ("הרצאה 1", "הרצאה 2"...), not by Moodle section.
+function nextLecture() {
+  const have = ((S.local && S.local.lectureRecordings) || []).map(r => +(r.name.match(/\d+/) || [0])[0]);
+  const queued = [...S.jobs.values()].filter(j => S.course && j.course === S.course.name && j.num < 0).map(j => -j.num);
+  return Math.max(0, ...have, ...queued) + 1;
+}
+function lectureLinkRow(onAdded) {
+  const row = h(`<div class="row wrap"><span class="muted">הרצאה</span><input type="number" min="1" max="40" style="width:76px;height:42px;padding:0 10px;border-radius:11px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit">
+    <input type="text" class="ltr" placeholder="https://...zoom.us/rec/..." style="max-width:360px"><button class="soft">הורד</button></div>`);
+  const num = row.querySelector('input[type=number]'), link = row.querySelector('input.ltr');
+  num.value = nextLecture();
+  const add = () => {
+    const url = link.value.trim(); if (!url) return link.focus();
+    send({ type: 'addLectureRecording', course: S.course.name, num: +num.value || 1, url });
+    link.value = ''; num.value = (+num.value || 1) + 1;
+    if (onAdded) onAdded();
+  };
+  row.querySelector('button').onclick = add;
+  link.onkeydown = (e) => { if (e.key === 'Enter') add(); };
+  return row;
+}
+
 function setupAnswers() {
   const k = S.course ? S.course.name : '';
   S.setupAns = S.setupAns || {};
@@ -512,24 +534,13 @@ const SETUP_Q = [
   },
   {
     key: 'recs',
-    ask: () => 'יש לך קישורים להקלטות של השיעורים?',
-    hint: () => 'הדבק את הקישור ל-Zoom של כל שיעור ובחר לאיזה שיעור הוא שייך. אני אוריד את ההקלטה ואת התמלול לתיקייה של השיעור.',
+    ask: () => 'יש לך קישורים להקלטות של ההרצאות?',
+    hint: () => 'הדבק את הקישור ל-Zoom של ההרצאה. המספר כבר מוכן (הרצאה 1, ואחר כך 2...), ואפשר לשנות אותו. אני אוריד את ההקלטה ואת התמלול.',
     body: (done) => {
       const box = h('<div style="display:grid;gap:8px"></div>');
-      const lessons = S.sections.filter(s => s.num > 0 && s.items.length);
       const added = h('<div class="muted" style="font-size:12.5px"></div>');
-      const row = h(`<div class="row wrap"><select style="width:auto;min-width:170px">${lessons.map(s => `<option value="${s.num}">שיעור ${s.num} · ${esc(s.title).slice(0, 40)}</option>`).join('')}</select>
-        <input type="text" class="ltr" placeholder="https://...zoom.us/rec/..." style="max-width:340px"><button class="soft">הוסף</button></div>`);
+      const row = lectureLinkRow(() => { count++; added.textContent = `${count} הקלטות בהורדה. אפשר להוסיף עוד.`; });
       let count = 0;
-      const add = () => {
-        const url = row.querySelector('input').value.trim(); if (!url) return;
-        send({ type: 'addRecording', course: S.course.name, num: +row.querySelector('select').value, url });
-        row.querySelector('input').value = ''; count++;
-        added.textContent = `${count} הקלטות בהורדה. אפשר להוסיף עוד.`;
-        const sel = row.querySelector('select'); if (sel.selectedIndex < sel.options.length - 1) sel.selectedIndex++;
-      };
-      row.querySelector('button').onclick = add;
-      row.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') add(); };
       const next = h('<div class="row wrap"></div>');
       const done1 = h('<button class="primary">סיימתי</button>'); done1.onclick = () => done(count ? `${count} הקלטות` : 'בלי הקלטות');
       const none = h('<button class="ghost">אין לי הקלטות</button>'); none.onclick = () => done('אין');
@@ -653,36 +664,33 @@ function renderRecs() {
     c.querySelector('button').onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'הקלטה'; syncDownloadTarget(); openSite('moodle', zoomTool.url); };
     p.append(c);
   }
-  // Paste a lesson's Zoom link: the recording and its transcript download into that lesson's folder.
-  const lessons = S.sections.filter(s => s.num > 0 && s.items.length);
-  if (lessons.length) {
-    const addCard = h(`<div class="card pad-lg" style="margin-bottom:14px"><h2>הוסף הקלטה לפי קישור</h2>
-      <p class="muted" style="margin:6px 0 12px">יש לך קישור Zoom של שיעור? בחר את השיעור, הדבק את הקישור, ואני אוריד את ההקלטה והתמלול.</p>
-      <div class="row wrap"><select style="width:auto;min-width:170px">${lessons.map(s => `<option value="${s.num}">שיעור ${s.num} · ${esc(s.title).slice(0, 40)}</option>`).join('')}</select>
-      <input type="text" class="ltr" placeholder="https://...zoom.us/rec/..." style="max-width:340px"><button class="primary">הורד</button></div></div>`);
-    const add = () => {
-      const url = addCard.querySelector('input').value.trim(); if (!url) return;
-      send({ type: 'addRecording', course: S.course.name, num: +addCard.querySelector('select').value, url });
-      addCard.querySelector('input').value = '';
-    };
-    addCard.querySelector('button').onclick = add;
-    addCard.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') add(); };
-    p.append(addCard);
-  }
-  // Only recordings that really exist: the ones already downloaded, and the ones downloading now.
-  const have = S.sections.filter(s => s.local && s.local.videos);
-  const busy = [...S.jobs.values()].filter(j => j.course === S.course.name && (j.state === 'running' || j.state === 'queued'));
-  if (!have.length && !busy.length) {
-    p.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>${zoomTool ? 'עוד לא הורדו הקלטות' : 'אין הקלטות בקורס הזה'}</b>${zoomTool ? 'לחץ "פתח את הקלטות הזום" ובחר את השיעור.' : 'זה בסדר, הסיכומים וההכנה למבחן עובדים גם בלי הקלטות.'}</div>`));
+  // Paste a lecture's Zoom link: "הרצאה N" + its transcript go to the course's "הקלטות" folder.
+  const addCard = h(`<div class="card pad-lg" style="margin-bottom:14px"><h2>הוסף הקלטה של הרצאה</h2>
+    <p class="muted" style="margin:6px 0 12px">הדבק את הקישור ל-Zoom. מספר ההרצאה כבר מוכן, ואפשר לשנות אותו.</p></div>`);
+  addCard.append(lectureLinkRow(() => setTimeout(renderRecs, 300)));
+  p.append(addCard);
+  // Only recordings that really exist: downloaded, or downloading now.
+  const lectures = (S.local && S.local.lectureRecordings) || [];
+  const lessonRecs = S.sections.filter(s => s.local && s.local.videos);
+  const busy = [...S.jobs.values()].filter(j => j.course === S.course.name && (j.state === 'running' || j.state === 'queued' || j.state === 'failed'));
+  if (!lectures.length && !lessonRecs.length && !busy.length) {
+    p.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>עוד אין הקלטות</b>הדבק למעלה קישור להקלטה של הרצאה. בלי הקלטות הכל עובד גם כן, רק בלי התמלול.</div>`));
     return;
   }
-  const list = h('<div class="card pad-lg"><h2>הקלטות שהורדו</h2><div class="rec-list" style="margin-top:12px"></div></div>');
+  const list = h('<div class="card pad-lg"><h2>ההקלטות של הקורס</h2><div class="rec-list" style="margin-top:12px;display:grid;gap:8px"></div></div>');
   busy.forEach(j => {
-    const row = h(`<div class="check-row"><div class="ci"><span class="spinner"></span></div><div class="grow"><b dir="auto"></b><small dir="auto"></small></div></div>`);
+    const row = h(`<div class="check-row"><div class="ci">${j.state === 'failed' ? IC.alert : '<span class="spinner"></span>'}</div><div class="grow"><b dir="auto"></b><small dir="auto"></small></div></div>`);
     row.querySelector('b').textContent = j.name; row.querySelector('small').textContent = j.status;
+    if (j.state === 'failed') { const b = h('<button class="small">נסה שוב</button>'); b.onclick = () => send({ type: 'retry', id: j.id }); row.append(b); }
     list.querySelector('.rec-list').append(row);
   });
-  have.forEach(s => {
+  lectures.forEach(r => {
+    const row = h(`<div class="check-row ok"><div class="ci" data-ic="check"></div><div class="grow"><b dir="auto"></b><small>הקלטה ותמלול</small></div><button class="small">נגן</button></div>`);
+    row.querySelector('b').textContent = r.name;
+    row.querySelector('button').onclick = () => send({ type: 'openPath', path: r.path });
+    list.querySelector('.rec-list').append(row);
+  });
+  lessonRecs.forEach(s => {
     const row = h(`<div class="check-row ok"><div class="ci" data-ic="check"></div><div class="grow"><b dir="auto"></b><small>הקלטה ותמלול</small></div><button class="small">פתח</button></div>`);
     row.querySelector('b').textContent = 'שיעור ' + s.num + ' · ' + s.title;
     row.querySelector('button').onclick = () => send({ type: 'openPath', path: s.local.dir + '\\הקלטה' });

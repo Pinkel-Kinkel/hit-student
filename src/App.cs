@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.6.0";
+    public const string Version = "2.6.1";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -340,8 +340,13 @@ partial class HitStudent : Form
             case "restartForUpdate": RestartIntoUpdate(); break;
             case "addRecording":
                 string rec = Str(m, "url").Trim();
-                if (!IsZoomUrl(rec)) { Toast("×–×” ×œ× ×§×™×©×•×¨ ×œ×”×§×œ×˜×ª Zoom", true); return; }
-                if (!QueueRecording(course, Int(m, "num"), rec, true)) Toast("×”×”×§×œ×˜×” ×”×–×• ×›×‘×¨ ×‘×”×•×¨×“×” ××• ×”×•×¨×“×”", false);
+                if (!IsZoomUrl(rec)) { Toast("זה לא קישור להקלטת Zoom", true); return; }
+                if (!QueueRecording(course, Int(m, "num"), rec, true)) Toast("ההקלטה הזו כבר בהורדה או הורדה", false);
+                break;
+            case "addLectureRecording":
+                string lrec = Str(m, "url").Trim();
+                if (!IsZoomUrl(lrec)) { Toast("זה לא קישור להקלטת Zoom", true); return; }
+                QueueLectureRecording(course, Int(m, "num"), lrec);
                 break;
             case "homework": Homework(course, Int(m, "num"), Str(m, "title")); break;
             case "learnCourse": LearnCourse(course, m["sections"] as System.Collections.ArrayList); break;
@@ -582,7 +587,7 @@ partial class HitStudent : Form
         if (updating || updateZipUrl == null || updateShaUrl == null) { if (updatePage != null) OpenExternal(updatePage); return; }
         if (stagedUpdateDir != null) { Send(new { type = "updateReady", version = updateVersion }); return; }
         updating = true;
-        Send(new { type = "updateProgress", version = updateVersion, text = "×ž×•×¨×™×“ ××ª ×”×¢×“×›×•×Ÿ..." });
+        Send(new { type = "updateProgress", version = updateVersion, text = "מוריד את העדכון..." });
         try
         {
             string work = Path.Combine(Path.GetTempPath(), "hit-student-update-" + updateVersion);
@@ -605,12 +610,12 @@ partial class HitStudent : Form
             using (var sha = System.Security.Cryptography.SHA256.Create())
             using (var fs = File.OpenRead(zip))
                 actual = BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
-            if (actual != expected) throw new Exception("×”×§×•×‘×¥ ×©×”×•×¨×“ ×œ× ×ª×§×™×Ÿ (×‘×“×™×§×ª ×—×ª×™×ž×” × ×›×©×œ×”)");
+            if (actual != expected) throw new Exception("הקובץ שהורד לא תקין (בדיקת חתימה נכשלה)");
 
             string extracted = Path.Combine(work, "x");
             System.IO.Compression.ZipFile.ExtractToDirectory(zip, extracted);
             string root = File.Exists(Path.Combine(extracted, "HitStudent.exe")) ? extracted : Path.Combine(extracted, "HIT Student");
-            if (!File.Exists(Path.Combine(root, "HitStudent.exe"))) throw new Exception("×”×¢×“×›×•×Ÿ ×œ× ×ž×›×™×œ ××ª ×”××¤×œ×™×§×¦×™×”");
+            if (!File.Exists(Path.Combine(root, "HitStudent.exe"))) throw new Exception("העדכון לא מכיל את האפליקציה");
             // Make sure nothing in the package escapes the app folder.
             foreach (string f in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
                 if (!IsInside(f, root)) throw new Exception("bad package");
@@ -643,7 +648,7 @@ partial class HitStudent : Form
             Process.Start(new ProcessStartInfo(Path.Combine(AppDir, "HitStudent.exe")) { UseShellExecute = false, WorkingDirectory = AppDir });
             Close();
         }
-        catch (Exception ex) { Toast("×”×¢×“×›×•×Ÿ × ×›×©×œ: " + ex.Message, true); }
+        catch (Exception ex) { Toast("העדכון נכשל: " + ex.Message, true); }
     }
 
     static void CleanUpOldFiles()
@@ -704,7 +709,7 @@ partial class HitStudent : Form
         string name = SafeName(Path.GetFileName(e.ResultFilePath));
         string dir = siteDownloadCourse != null
             ? Path.Combine(CourseDir(siteDownloadCourse), SafeName(siteDownloadFolder.Length > 0 ? siteDownloadFolder : Exams))
-            : Path.Combine(StudyRoot, "\u05D4\u05D5\u05E8\u05D3\u05D5\u05EA"); // ×”×•×¨×“×•×ª
+            : Path.Combine(StudyRoot, "\u05D4\u05D5\u05E8\u05D3\u05D5\u05EA"); // הורדות
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, name);
         for (int i = 2; File.Exists(path); i++)

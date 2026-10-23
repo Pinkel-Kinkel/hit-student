@@ -81,6 +81,20 @@ partial class HitStudent
 
     void Log(Job j, string line) { Send(new { type = "log", id = j.Id, line = line }); }
 
+    // A lecture recording the student pasted, numbered by lecture (not by Moodle section, which in many courses
+    // is "exercises" / "exams" rather than a week). Saved as "הקלטות\הרצאה N.mp4" + "הרצאה N תמלול.txt".
+    void QueueLectureRecording(string course, int lecture, string url)
+    {
+        if (lecture < 1) lecture = 1;
+        if (jobs.Any(j => j.Url.Split('?')[0] == url.Split('?')[0] && (j.State == "queued" || j.State == "running"))) return;
+        AddJob(new Job
+        {
+            Url = url, Name = "הרצאה " + lecture, Transcript = true,   // "הרצאה N"
+            Dir = Path.Combine(CourseDir(course), LectureRecordings), Course = course, Lecture = -lecture,
+            Finished = j => SendCourseLocal(course)
+        });
+    }
+
     // manual = the user pasted this link into the lesson, so download it even if it was downloaded before.
     bool QueueRecording(string course, int num, string url, bool manual)
     {

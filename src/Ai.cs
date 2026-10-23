@@ -597,6 +597,7 @@ partial class HitStudent
         if (lecturer.Length > 0) sb.Append(" המרצה: ").Append(lecturer).Append('.');
         sb.Append("\nמבנה התיקייה: \"שיעור N\" = מצגות השיעור; \"שיעור N/" + Exercises + "\" = תרגילים, פתרונות ומטלות;")
           .Append(" \"שיעור N/" + RecordingFolder + "\" = תמלול השיעור (אל תקרא את קובץ הוידאו);")
+          .Append(" \"" + LectureRecordings + "\" = הקלטות ההרצאות לפי מספר, \"הרצאה N תמלול.txt\" הוא התמלול של הרצאה N (אל תקרא את קבצי הוידאו);")
           .Append(" \"" + Notebook + "\" = המחברת של הסטודנט מ-Notability;")
           .Append(" \"" + Exams + "\" = מבחנים משנים קודמות ופתרונותיהם;")
           .Append(" \"" + Cs24Folder + "\" = סיכומים, מחברות של סטודנטים ומבחנים מאתר CS24;")
