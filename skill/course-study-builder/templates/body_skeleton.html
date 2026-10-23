@@ -1,0 +1,110 @@
+<style>
+.fx{background:var(--surface2);border-radius:12px;padding:12px 16px;margin:14px 0;border-inline-start:4px solid var(--accent)}
+.fx .eq{font-size:1.12em}
+.fx .eq .katex-display{margin:4px 0}
+.fx dl{margin:6px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;font-size:15.5px}
+.fx dt{font-weight:700;color:var(--muted)}
+.fx dd{margin:0}
+.fx .used{font-size:13px;color:var(--muted);margin-top:6px}
+.big-idea{font-size:18px;font-weight:700;color:var(--accent);margin:6px 0}
+@media (max-width:600px){.fx dl{grid-template-columns:1fr}.fx dt{margin-top:4px}}
+</style>
+<!--
+  Body of a weekly study page. Assemble with: scripts/assemble.py body.html out.html "<title>" <storage-key>
+  Keep every section id below: the red pointers in the exercise PDFs link to use-* and to section ids.
+  Check before shipping: python -I scripts/checklinks.py body.html  (no missing targets, every f-* used in a hint).
+  Math: KaTeX with $...$ and $$...$$.  NEVER put "·" inside \text{} (KaTeX error) - write \text{eV}\cdot\text{nm}.
+  Avoid \vec p\,' (KaTeX parse error) - write \vec{p}'_{x}.
+-->
+<header class="top">
+  <div class="kicker">COURSE (CODE) · שבוע N · דף לימוד ממוקד מבחן</div>
+  <h1>TOPIC TITLE</h1>
+  <p class="lede">The one idea behind every question this week, in 2-3 sentences.</p>
+  <div class="progress"><span id="progText">0 מתוך 0 שאלות סומנו כפתורות</span><div class="bar"><i id="progBar"></i></div></div>
+</header>
+
+<nav class="toc">
+  <a href="#cheat">קבועים</a>
+  <a href="#must">חובה / לדלג</a>
+  <a href="#core">TOPIC</a>
+  <a href="#gaps">השלמות</a>
+  <a href="#patterns">תבניות שאלה</a>
+  <a href="#errata">טעויות בפתרונות</a>
+  <a href="#use">🎯 שימוש בתרגילים</a>
+</nav>
+
+<!-- 1. CONSTANTS & UNITS the lecturer uses (compact table only - formulas go into their sections) -->
+<h2 id="cheat">⚡ קבועים ויחידות שהמרצה משתמש בהם</h2>
+<div class="card"><div class="tablewrap"><table>
+  <tr><th>מה</th><th>ערך</th><th>הערה</th></tr>
+  <tr id="f-NAME"><td><b>NAME</b></td><td>$VALUE$</td><td>when / trap</td></tr>
+</table></div></div>
+
+<!-- 2. MUST vs SKIP - justified by counting what the exercises/exams actually use -->
+<h2 id="must">🎯 מה חובה ומה אפשר לדלג</h2>
+<p>הסיווג מבוסס על X שאלות התרגיל של השבוע: ...</p>
+<div class="callout"><b class="h">📌 שימו לב</b>Decks with no exercises yet / moved to another week.</div>
+<div class="grid2">
+  <div class="card"><h3 style="margin-top:0"><span class="tag t-must">חובה</span></h3><ul><li>...</li></ul></div>
+  <div class="card"><h3 style="margin-top:0"><span class="tag t-skip">רקע, אפשר לדלג</span></h3><ul class="skiplist"><li>...</li></ul></div>
+</div>
+
+<!-- 3. CORE EXPLANATION - numbered subsections (id topic-N). EVERY formula the lecturer uses in any solution
+     appears here, inside the subsection it belongs to, as a .fx card: the formula, what each symbol means,
+     what it says in words, when to use it, the trap, and which questions use it. Key concepts that questions
+     ask about a lot get a one-line .big-idea statement (e.g. "λ0 is the MAXIMUM wavelength that still ejects electrons"). -->
+<h2 id="core">TOPIC</h2>
+<div class="card">
+  <h3 id="core-1">1. SUBTOPIC</h3>
+  <p class="big-idea">The one sentence the student must remember.</p>
+  <div class="fx" id="f-NAME2">
+    <div class="eq">$$FORMULA$$</div>
+    <dl><dt>$SYMBOL$</dt><dd>what it is, units</dd>
+    <dt>במילים</dt><dd>what the formula says</dd>
+    <dt>שימו לב</dt><dd>trap / sign / units / lecturer's notation and inconsistencies</dd></dl>
+    <div class="used">שאלות: Q1, Q2(ב)</div>
+  </div>
+</div>
+
+<!-- 4. GAPS: what the exercises need that the slides don't teach (or teach badly). ids g1, g2, ... -->
+<h2 id="gaps">🧩 השלמות: מה שהמצגות לא מסבירות והתרגילים דורשים</h2>
+<div class="card">
+  <h3 id="g1" style="margin-top:0">1. ... <span class="tag t-gap">לא מופיע במצגת</span></h3>
+  <p>...</p>
+</div>
+
+<!-- 5. QUESTION PATTERNS: recognise -> start from -> trap. Row ids pat-A, pat-B, ... -->
+<h2 id="patterns">🧭 תבניות שאלה: לזהות ← לבחור נוסחה ← לפתור</h2>
+<div class="card"><div class="tablewrap"><table>
+  <tr><th>#</th><th>איך מזהים</th><th>מאיפה מתחילים</th><th>מלכודת</th></tr>
+  <tr id="pat-A"><td><b>A</b></td><td>...</td><td>...</td><td>...</td></tr>
+</table></div></div>
+<div class="callout exam" id="exam-style"><b class="h">🎓 איך נראית שאלת מבחן</b>Only if a question carries points / comes from an exam.</div>
+
+<!-- 6. ERRATA in the official solutions (verify by recomputing!) -->
+<h2 id="errata">⚠️ טעויות בפתרונות הרשמיים</h2>
+<div class="callout err"><ol class="steps" style="margin:0"><li><b>FILE Q:</b> what is written vs what is right.</li></ol></div>
+
+<!-- 7. USE IN EXERCISES - the LAST section. One collapsed card per exercise (id="use-<key>").
+     Visible part = HINT: where to start, which formulas (links to #f-*) in what order, no numbers, no answer.
+     Inside a second <details>: the full worked solution. PDF pointers link to use-<key>. -->
+<h2 id="use">🎯 שימוש בתרגילים</h2>
+<p>לכל תרגיל: רמז לדרך הפתרון, בלי התשובה. פתרון מלא מקופל מתחת לרמז.</p>
+<h3>FILE</h3>
+<details class="q" id="use-KEY" data-id="KEY"><summary><span class="chev">◀</span><span class="qtitle">SHORT TITLE <span class="pattern">A</span><span class="src">FILE · Q</span></span><label class="done" onclick="event.stopPropagation()"><input type="checkbox">✓</label></summary>
+<div class="qbody">
+<div class="callout must"><b class="h">💡 רמז</b><ol class="steps" style="margin:0">
+<li>(א) what to compute first (<a href="#f-NAME2">formula name</a>)</li>
+<li>(ב) ... (<a href="#f-NAME2">formula name</a>), trap to watch</li></ol></div>
+<details class="reveal"><summary>הצג פתרון מלא</summary>
+<p>Step by step, filling in steps the official solution skips.</p>
+<p class="ans">final answer</p>
+</details></div></details>
+
+<footer>נבנה מהפתרונות של המרצה: ...</footer>
+</div>
+<script>
+/* open a collapsed exercise when arriving from a PDF pointer link (#use-...) */
+function openTarget(){ var id=decodeURIComponent(location.hash.slice(1)); var el=id&&document.getElementById(id); if(el&&el.tagName==="DETAILS"){ el.open=true; el.scrollIntoView(); } }
+window.addEventListener("hashchange", openTarget); window.addEventListener("load", openTarget);
+</script>

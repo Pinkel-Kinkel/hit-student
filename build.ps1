@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $sdkVersion = '1.0.4314.35'
 $sdk = Join-Path $root "build\webview2-$sdkVersion"
-$out = Join-Path $root 'dist\HIT Recordings'
+$out = Join-Path $root 'dist\HIT Student'
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
 if (-not (Test-Path $sdk)) {
@@ -21,16 +21,19 @@ $lib = Join-Path $sdk 'pkg\lib\net462'
 New-Item -ItemType Directory -Force $out | Out-Null
 Copy-Item "$lib\Microsoft.Web.WebView2.Core.dll", "$lib\Microsoft.Web.WebView2.WinForms.dll", (Join-Path $sdk 'pkg\runtimes\win-x64\native\WebView2Loader.dll') $out -Force
 Copy-Item (Join-Path $root 'src\ui.html') $out -Force
+# The study skill ships next to the app; the app installs it into ~/.claude/skills on first run.
+Remove-Item (Join-Path $out 'skill') -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $root 'skill') (Join-Path $out 'skill') -Recurse -Force
 
 Write-Host 'Compiling...'
 & $csc /nologo /target:winexe /platform:x64 /codepage:65001 /optimize+ `
-    "/out:$out\HitRecordings.exe" `
-    /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll `
+    "/out:$out\HitStudent.exe" `
+    /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Net.Http.dll `
     "/r:$out\Microsoft.Web.WebView2.Core.dll" "/r:$out\Microsoft.Web.WebView2.WinForms.dll" `
-    (Join-Path $root 'src\HitRecordings.cs')
+    (Join-Path $root 'src\HitStudent.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Compile failed' }
 
-$zipOut = Join-Path $root 'dist\HIT-Recordings.zip'
+$zipOut = Join-Path $root 'dist\HIT-Student.zip'
 Remove-Item $zipOut -ErrorAction SilentlyContinue
 Compress-Archive $out $zipOut
 Write-Host "Built: $out"
