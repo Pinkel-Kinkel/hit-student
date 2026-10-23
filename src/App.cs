@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.2.0";
+    public const string Version = "2.3.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -315,6 +315,7 @@ partial class HitStudent : Form
                 SendSettings();
                 foreach (var j in jobs) SendJob(j);
                 CheckClipboard(false);
+                SendTimetable();
                 var ignored = PollStatus(true);
                 break;
             case "finishOnboarding":
@@ -434,6 +435,8 @@ partial class HitStudent : Form
 
             // Notability
             case "linkNotability": LinkNotability(course, Str(m, "folder")); break;
+            case "openNotability": OpenNotability(); break;
+            case "importTimetable": ImportTimetable(); break;
 
             // Sites inside the app
             case "showSite": ShowSite(m); break;

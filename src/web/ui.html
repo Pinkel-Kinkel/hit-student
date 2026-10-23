@@ -26,9 +26,13 @@
     <button class="nav-item active" data-view="home"><span class="ni" data-ic="home"></span><span class="nav-text">בית</span></button>
     <button class="nav-item" data-view="courses"><span class="ni" data-ic="book"></span><span class="nav-text">הקורסים שלי</span></button>
     <button class="nav-item" data-view="recordings" id="navDownloads" hidden><span class="ni" data-ic="download"></span><span class="nav-text">הורדות</span><span class="count" id="jobCount" hidden>0</span></button>
-    <button class="nav-item" data-view="sites"><span class="ni" data-ic="globe"></span><span class="nav-text">אתרים</span></button>
-    <button class="nav-item" data-site-link="notability"><span class="ni" data-ic="note"></span><span class="nav-text">המחברת שלי</span></button>
+    <div class="nav-label nav-text">אתרים</div>
+    <button class="nav-item" data-site-link="moodle"><span class="ni" data-ic="globe"></span><span class="nav-text">Moodle</span></button>
+    <button class="nav-item" data-site-link="portal"><span class="ni" data-ic="user"></span><span class="nav-text">פורטל מידע אישי</span></button>
+    <button class="nav-item" data-site-link="cs24"><span class="ni" data-ic="exam"></span><span class="nav-text">CS24</span></button>
+    <button class="nav-item" data-notes><span class="ni" data-ic="note"></span><span class="nav-text">המחברת שלי</span></button>
     <button class="nav-item" data-site-link="notebooklm"><span class="ni" data-ic="book"></span><span class="nav-text">NotebookLM</span></button>
+    <div class="nav-label nav-text"></div>
     <button class="nav-item" data-view="settings"><span class="ni" data-ic="settings"></span><span class="nav-text">הגדרות</span></button>
     <div class="grow"></div>
     <button class="theme-toggle" id="themeToggle" title="מצב בהיר / כהה"><span id="themeIcon"></span><span class="nav-text" id="themeText">מצב כהה</span></button>
@@ -61,6 +65,10 @@
           <div class="card">
             <div class="card-head"><span class="ic assign" data-ic="sparkles"></span><h2>פעולות מהירות</h2></div>
             <div class="quick" id="quick"></div>
+          </div>
+          <div class="card full">
+            <div class="card-head"><span class="ic zoom" data-ic="clock"></span><h2>המערכת שלי</h2><span class="chip" id="ttStatus"></span><button class="small ghost" id="ttImport">עדכן מערכת</button></div>
+            <div id="timetable"></div>
           </div>
           <div class="card full">
             <div class="card-head"><span class="ic file" data-ic="book"></span><h2>הקורסים של הסמסטר</h2><button class="small ghost" id="allCourses">לכל הקורסים</button></div>
@@ -150,7 +158,7 @@
 
     <!-- Sites -->
     <section class="view" id="view-sites">
-      <div class="site-bar">
+      <div class="site-bar" hidden>
         <div class="site-tabs" id="siteTabs">
           <button data-site="moodle" class="active">Moodle</button>
           <button data-site="portal">פורטל מידע אישי</button>

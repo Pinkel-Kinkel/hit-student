@@ -118,12 +118,18 @@ function show(view) {
   if (view === 'courses' && !S.courses) loadCourses();
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(n => n.onclick = () => show(n.dataset.view));
-// Notability and NotebookLM open inside the app; files exported there go to the course chosen in the bar above the site.
+// Sites open full-size inside the app, without a toolbar. Anything downloaded there goes straight into the course
+// that's open (or the "הורדות" folder), to the folder that fits the site.
+const siteFolder = { moodle: 'כללי', portal: 'מידע על הקורס', cs24: 'CS24', notability: 'מחברת', notebooklm: 'CS24' };
 document.querySelectorAll('.nav-item[data-site-link]').forEach(n => n.onclick = () => {
-  if (S.course) { $('dlCourse').value = S.course.name; $('dlFolder').value = n.dataset.siteLink === 'notability' ? 'מחברת' : 'CS24'; syncDownloadTarget(); }
-  openSite(n.dataset.siteLink);
-  if (n.dataset.siteLink === 'notebooklm') toast('ב-NotebookLM: צור מחברת חדשה, ובחר "הוסף מקור" מתוך תיקיית הקורס. דפי הלימוד והתמלולים הם מקורות מצוינים.', { ms: 9000 });
+  const site = n.dataset.siteLink;
+  $('dlCourse').value = S.course ? S.course.name : '';
+  $('dlFolder').value = siteFolder[site] || 'כללי';
+  syncDownloadTarget();
+  openSite(site);
 });
+// "My notebook": the Notability app on this PC if it's installed, otherwise Notability on the web inside the app.
+document.querySelector('.nav-item[data-notes]').onclick = () => send({ type: 'openNotability', course: S.course ? S.course.name : '' });
 $('brand').onclick = () => show('home');
 
 // ---------- Status ----------
@@ -228,6 +234,35 @@ function renderProviders() {
     box.append(providerCard('claude'), providerCard('gemini'));
   }
 }
+
+// ---------- Timetable (from the portal export) ----------
+const DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+function renderTimetable() {
+  const box = $('timetable'); box.innerHTML = '';
+  const tt = S.timetable;
+  if (!tt || !((tt.classes || []).length || (tt.exams || []).length)) {
+    const e = h(`<div class="empty" style="border:none;padding:10px">${ART.calendar().replace('<svg', '<svg class="art"')}<b>הוסף את המערכת ואת לוח המבחנים</b>
+      בפורטל מידע אישי פותחים את מערכת השעות ואת לוח הבחינות, ושומרים אותם כ-PDF או כצילום מסך. אחר כך בוחרים את הקבצים כאן.
+      <div class="row"><button class="soft" data-p>פתח את הפורטל</button><button class="primary" data-i>בחר קבצים</button></div></div>`);
+    e.querySelector('[data-p]').onclick = () => { $('dlCourse').value = ''; syncDownloadTarget(); openSite('portal'); };
+    e.querySelector('[data-i]').onclick = () => send({ type: 'importTimetable' });
+    box.append(e);
+    return;
+  }
+  const today = DAYS[new Date().getDay()];
+  const todays = (tt.classes || []).filter(c => c.day === today).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+  const exams = (tt.exams || []).filter(x => x.date && new Date(x.date) >= new Date(new Date().toDateString())).sort((a, b) => a.date.localeCompare(b.date));
+  const grid = h('<div class="info-grid"></div>');
+  const day = h(`<div><h3 style="margin-bottom:8px">היום · יום ${today}</h3></div>`);
+  if (!todays.length) day.append(h('<div class="muted">אין שיעורים היום.</div>'));
+  todays.forEach(c => { const r = h(`<div class="deadline"><div class="cal"><b style="font-size:13px;margin-top:10px">${esc(c.start)}</b><small>${esc(c.end)}</small></div><div class="info"><div class="name" dir="auto"></div><div class="course" dir="auto"></div></div></div>`); r.querySelector('.name').textContent = c.course; r.querySelector('.course').textContent = [c.kind, c.room, c.lecturer].filter(Boolean).join(' · '); day.append(r); });
+  const ex = h('<div><h3 style="margin-bottom:8px">מבחנים קרובים</h3></div>');
+  if (!exams.length) ex.append(h('<div class="muted">אין מבחנים קרובים במערכת.</div>'));
+  exams.slice(0, 6).forEach(x => { const d = new Date(x.date); const r = h(`<div class="deadline${(d - new Date()) < 14 * 86400000 ? ' soon' : ''}"><div class="cal"><b>${d.getDate()}</b><small>${esc(monFmt.format(d))}</small></div><div class="info"><div class="name" dir="auto"></div><div class="course"></div></div><span class="chip">מועד ${esc(x.moed || '')}</span></div>`); r.querySelector('.name').textContent = x.course; r.querySelector('.course').textContent = [x.time, x.room].filter(Boolean).join(' · '); ex.append(r); });
+  grid.append(day, ex);
+  box.append(grid);
+}
+$('ttImport').onclick = () => send({ type: 'importTimetable' });
 
 // ---------- Home ----------
 // For homework deadlines: whether the syllabus says it counts (known after "learn the course" read the syllabus).
@@ -416,25 +451,51 @@ function setupSteps() {
       act: ['חבר', () => setTab('notes')] }
   ];
 }
+// One step at a time. Steps the app already finished in the background are ticked and skipped on their own.
 function renderSetup() {
   const p = $('pane-setup'); p.innerHTML = '';
   const steps = setupSteps();
-  const required = steps.filter(s => !s.optional);
-  const ready = required.every(s => s.done);
-  const card = h(`<div class="card pad-lg"><h2>${ready ? 'הכל מוכן להתחיל ללמוד 🎉' : 'כמה דברים לפני שמתחילים'}</h2>
-    <p class="muted" style="margin:6px 0 16px">${ready ? `${aiName()} יבנה דף לימוד לכל שיעור, עזרה לשיעורי הבית והכנה למבחן לפי המבחנים הקודמים.` : 'ככל שיש יותר חומר, הסיכומים וההכנה למבחן מדויקים יותר. מה שמסומן "לא חובה" אפשר לדלג.'}</p>
-    <div class="setup-list"></div><div class="row" style="margin-top:18px"><button class="primary big" id="startLearning"><span data-ic="sparkles"></span>התחל ללמוד את הקורס</button></div></div>`);
-  steps.forEach(s => {
-    const row = h(`<div class="check-row${s.done ? ' ok' : ''}"><div class="ci" data-ic="${s.done ? 'check' : 'clock'}"></div><div class="grow"><b>${s.title}${s.optional ? ' <span class="chip">לא חובה</span>' : ''}</b><small dir="auto"></small></div></div>`);
-    row.querySelector('small').textContent = s.text;
-    if (s.act && !s.done) { const b = h(`<button class="small">${s.act[0]}</button>`); b.onclick = s.act[1]; row.append(b); }
-    card.querySelector('.setup-list').append(row);
-  });
-  const go = card.querySelector('#startLearning');
-  go.disabled = !steps[0].done;
-  go.onclick = () => { $('learnAll').click(); setTab('lessons'); };
+  const key = S.course ? S.course.name : '';
+  S.setupSkipped = S.setupSkipped || {};
+  const skipped = S.setupSkipped[key] = S.setupSkipped[key] || new Set();
+  const current = steps.find(s => !s.done && !skipped.has(s.key));
+  const doneCount = steps.filter(s => s.done || skipped.has(s.key)).length;
+  const dots = steps.map(s => `<i class="${s.done ? 'on' : s === current ? 'now' : skipped.has(s.key) ? 'skip' : ''}"></i>`).join('');
+  $('tabSetup').textContent = steps.filter(s => !s.done && !s.optional).length || '✓';
+
+  if (!current) {
+    const card = h(`<div class="card pad-lg setup-step"><div class="step-dots">${dots}</div>
+      <div style="width:220px;margin:6px auto 0">${ART.done().replace('<svg', '<svg style="width:220px;height:134px"')}</div>
+      <h2 style="text-align:center">הקורס מוכן ללמידה</h2>
+      <p class="muted" style="text-align:center;margin:8px auto 18px;max-width:520px">${aiName()} יבנה עכשיו דף לימוד לכל שיעור, עזרה לשיעורי הבית והכנה למבחן, מכל החומר שנאסף. זה לוקח זמן, ואפשר להמשיך לעבוד בינתיים.</p>
+      <div class="row" style="justify-content:center"><button class="primary big" id="startLearning"><span data-ic="sparkles"></span>התחל ללמוד את הקורס</button></div></div>`);
+    card.querySelector('#startLearning').onclick = () => { $('learnAll').click(); setTab('lessons'); };
+    p.append(card);
+    return;
+  }
+  const card = h(`<div class="card pad-lg setup-step"><div class="step-dots">${dots}</div>
+    <div class="muted" style="font-size:12.5px;margin-top:10px">שלב ${steps.indexOf(current) + 1} מתוך ${steps.length}</div>
+    <h2 style="margin:4px 0 6px">${current.title}${current.optional ? ' <span class="chip">לא חובה</span>' : ''}</h2>
+    <p class="muted" style="margin:0 0 18px" dir="auto"></p>
+    <div class="row wrap"></div></div>`);
+  card.querySelector('p').textContent = current.text;
+  const row = card.querySelector('.row');
+  if (current.key === 'lecturer') {
+    const inp = h('<input type="text" dir="auto" placeholder="שם המרצה" style="max-width:280px">');
+    inp.value = $('lecturer').value;
+    const save = h('<button class="primary">שמור</button>');
+    save.onclick = () => { $('lecturer').value = inp.value.trim(); $('lecturer').onchange(); renderSetup(); };
+    row.append(inp, save);
+  } else if (current.act) {
+    const b = h(`<button class="primary">${current.act[0]}</button>`); b.onclick = current.act[1]; row.append(b);
+  }
+  if (current.key === 'moodle') row.append(h('<span class="row muted" style="gap:8px"><span class="spinner"></span>מוריד ברקע...</span>'));
+  if (current.key !== 'moodle') {
+    const next = h(`<button class="ghost">${current.optional ? 'דלג' : 'אחר כך'}</button>`);
+    next.onclick = () => { skipped.add(current.key); renderSetup(); };
+    row.append(next);
+  }
   p.append(card);
-  $('tabSetup').textContent = required.filter(s => !s.done).length || '✓';
 }
 
 // ---------- Recordings of the course ----------
@@ -448,17 +509,23 @@ function renderRecs() {
     c.querySelector('button').onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'הקלטה'; syncDownloadTarget(); openSite('moodle', zoomTool.url); };
     p.append(c);
   }
-  const list = h('<div class="card pad-lg"><h2>הקלטה לכל שיעור</h2><p class="muted" style="margin:6px 0 12px">יש לך קישור להקלטה של שיעור? הדבק אותו ליד השיעור, וההקלטה והתמלול יורדים לתיקייה שלו.</p><div class="rec-list"></div></div>');
-  S.sections.filter(s => s.num > 0 && s.items.length).forEach(s => {
-    const job = lessonJob(s.num);
-    const has = s.local && s.local.videos;
-    const row = h(`<div class="check-row${has ? ' ok' : ''}"><div class="ci" data-ic="${has ? 'check' : 'video'}"></div><div class="grow"><b dir="auto"></b><small></small></div>
-      <input type="text" class="ltr" placeholder="קישור Zoom" style="max-width:260px;height:34px"><button class="small">הורד</button></div>`);
+  // Only recordings that really exist: the ones already downloaded, and the ones downloading now.
+  const have = S.sections.filter(s => s.local && s.local.videos);
+  const busy = [...S.jobs.values()].filter(j => j.course === S.course.name && (j.state === 'running' || j.state === 'queued'));
+  if (!have.length && !busy.length) {
+    p.append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>${zoomTool ? 'עוד לא הורדו הקלטות' : 'אין הקלטות בקורס הזה'}</b>${zoomTool ? 'לחץ "פתח את הקלטות הזום" ובחר את השיעור.' : 'זה בסדר, הסיכומים וההכנה למבחן עובדים גם בלי הקלטות.'}</div>`));
+    return;
+  }
+  const list = h('<div class="card pad-lg"><h2>הקלטות שהורדו</h2><div class="rec-list" style="margin-top:12px"></div></div>');
+  busy.forEach(j => {
+    const row = h(`<div class="check-row"><div class="ci"><span class="spinner"></span></div><div class="grow"><b dir="auto"></b><small dir="auto"></small></div></div>`);
+    row.querySelector('b').textContent = j.name; row.querySelector('small').textContent = j.status;
+    list.querySelector('.rec-list').append(row);
+  });
+  have.forEach(s => {
+    const row = h(`<div class="check-row ok"><div class="ci" data-ic="check"></div><div class="grow"><b dir="auto"></b><small>הקלטה ותמלול</small></div><button class="small">פתח</button></div>`);
     row.querySelector('b').textContent = 'שיעור ' + s.num + ' · ' + s.title;
-    row.querySelector('small').textContent = job ? job.status : has ? 'יש הקלטה ותמלול' : 'אין עדיין הקלטה';
-    const go = () => { const v = row.querySelector('input').value.trim(); if (v) { send({ type: 'addRecording', course: S.course.name, num: s.num, url: v }); row.querySelector('input').value = ''; } };
-    row.querySelector('button').onclick = go;
-    row.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    row.querySelector('button').onclick = () => send({ type: 'openPath', path: s.local.dir + '\\הקלטה' });
     list.querySelector('.rec-list').append(row);
   });
   p.append(list);
@@ -1006,6 +1073,15 @@ function onMessage(m) {
     case 'updateReady': S.updateReady = m.version; renderBanners(); toast(`העדכון לגרסה ${m.version} מוכן`, { action: 'הפעל מחדש', onAction: () => send({ type: 'restartForUpdate' }), ms: 12000 }); break;
     case 'notabilitySubjects': if (S.course) send({ type: 'openCourse', id: S.course.id, course: S.course.name }); break;
     case 'siteNav': $('siteUrl').textContent = m.url || ''; $('siteBack').disabled = !m.canBack; $('siteForward').disabled = !m.canForward; break;
+    case 'timetable': S.timetable = m.data; renderTimetable(); break;
+    case 'timetableStatus':
+      $('ttStatus').innerHTML = m.busy ? '<span class="spinner"></span> קורא את המערכת...' : '';
+      if (!m.busy && m.text) toast(m.text, { error: m.error });
+      break;
+    case 'openSite':
+      $('dlCourse').value = S.course ? S.course.name : ''; $('dlFolder').value = siteFolder[m.site] || 'כללי'; syncDownloadTarget();
+      openSite(m.site);
+      break;
     case 'siteDownload':
       if (m.state === 'done') toast(`נשמר: ${m.name}`, { action: 'פתח תיקייה', onAction: () => send({ type: 'openPath', path: m.dir }) });
       else if (m.state === 'failed') toast(`ההורדה של ${m.name} נכשלה`, { error: true });
@@ -1029,7 +1105,7 @@ function start() {
   host.addEventListener('message', e => onMessage(e.data));
   icons();
   $('splashLogo').innerHTML = IC.grad; $('navLogo').innerHTML = IC.grad;
-  renderHome(); refreshJobs(); renderStatus();
+  renderHome(); renderTimetable(); refreshJobs(); renderStatus();
   send({ type: 'ready' });
 }
 if (DEMO) {

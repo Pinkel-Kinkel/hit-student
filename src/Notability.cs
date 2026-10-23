@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -8,6 +9,21 @@ using System.Linq;
 // into the course's "מחברת" folder, where the study pages and the chat can use them.
 partial class HitStudent
 {
+    // Opens the Notability app installed on this PC (Microsoft Store apps are started by their app id).
+    // Without it, Notability on the web opens inside the app instead.
+    async void OpenNotability()
+    {
+        var r = await Exec("powershell.exe", "-NoProfile -NonInteractive -Command \"(Get-StartApps | Where-Object { $_.Name -like '*Notability*' } | Select-Object -First 1).AppID\"", null, 20000);
+        string appId = r.Item2.Trim();
+        if (r.Item1 == 0 && appId.Length > 0 && !appId.Contains(" ") && !appId.Contains("\""))
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", "shell:AppsFolder\\" + appId) { UseShellExecute = true });
+            Toast("פותח את Notability. מחברת שתייצא ל-PDF לתיקיית \"מחברת\" של הקורס תיכנס לסיכומים.", false);
+            return;
+        }
+        Send(new { type = "openSite", site = "notability" });
+    }
+
     List<string> NotabilitySubjects()
     {
         string root = NotabilityDir;

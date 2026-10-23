@@ -82,7 +82,13 @@ nav.side {
   width: 236px; flex: none; background: var(--surface); border-inline-end: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 16px 12px 14px; position: relative; z-index: 2;
 }
-.brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 20px; cursor: pointer; border: none; background: none; color: inherit; font: inherit; text-align: start; border-radius: 12px; }
+.setup-step { max-width: 720px; }
+.step-dots { display: flex; gap: 6px; }
+.step-dots i { width: 22px; height: 6px; border-radius: 999px; background: var(--surface-3); transition: background .3s, width .3s var(--ease); }
+.step-dots i.on { background: var(--ok); }
+.step-dots i.skip { background: var(--border); }
+.step-dots i.now { background: var(--accent); width: 40px; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 14px 8px 22px; cursor: pointer; border: none; background: none; color: inherit; font: inherit; text-align: start; border-radius: 12px; }
 .brand:hover .logo { transform: rotate(-6deg) scale(1.05); }
 .logo {
   width: 40px; height: 40px; border-radius: 12px; flex: none; display: grid; place-items: center;
