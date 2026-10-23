@@ -1,0 +1,8 @@
+build/
+dist/
+*.exe
+*.dll
+
+# Created next to the app at runtime - holds your Zoom sign-in, never commit it
+browser-data/
+save-folder.txt

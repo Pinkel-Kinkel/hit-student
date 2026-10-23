@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HIT Recordings</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #f0f2f5;
+    --border: #e3e6eb;
+    --text: #14171c;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-soft: #e8efff;
+    --ok: #16a34a;
+    --ok-soft: #e7f6ec;
+    --bad: #dc2626;
+    --bad-soft: #fdecec;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --surface: #1a1d24;
+      --surface-2: #22262f;
+      --border: #2c313b;
+      --text: #eceef2;
+      --muted: #9198a5;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --accent-soft: #1c2a45;
+      --ok: #22c55e;
+      --ok-soft: #15291d;
+      --bad: #f87171;
+      --bad-soft: #3a1d1f;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 24px 24px; display: flex; flex-direction: column; min-height: 100%; }
+
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px; flex: none;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    display: grid; place-items: center; box-shadow: var(--shadow);
+  }
+  .logo svg { width: 22px; height: 22px; fill: #fff; }
+  h1 { font: 600 22px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 2px 0 0; }
+  header .spacer { flex: 1; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 20px; }
+  label.field { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
+  label.field span { font-weight: 400; color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .field-group + .field-group { margin-top: 16px; }
+
+  input[type=text] {
+    width: 100%; height: 40px; padding: 0 12px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font: inherit; outline: none; user-select: text; transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  input[type=text]::placeholder { color: var(--muted); opacity: .8; }
+  input[type=text]:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input.flash { animation: flash 1.2s ease; }
+  @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+  button {
+    font: 600 13px/1 inherit; font-family: inherit; height: 40px; padding: 0 16px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  button:hover { background: var(--surface-2); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 0 22px; }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.small { height: 30px; padding: 0 11px; font-size: 12px; border-radius: 7px; }
+  button.link { border: none; background: none; color: var(--accent); padding: 0 6px; height: auto; }
+  button.link:hover { text-decoration: underline; background: none; }
+  button.icon { width: 30px; padding: 0; color: var(--muted); }
+
+  .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+  .toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; }
+  .toggle input { display: none; }
+  .switch { width: 36px; height: 20px; border-radius: 999px; background: var(--border); position: relative; transition: background .2s; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .2s; }
+  .toggle input:checked + .switch { background: var(--accent); }
+  .toggle input:checked + .switch::after { transform: translateX(16px); }
+  .toggle small { color: var(--muted); font-weight: 400; }
+
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 2px 10px; }
+  .section-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; font-weight: 600; }
+
+  #jobs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .job { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .job-top { display: flex; align-items: center; gap: 12px; }
+  .badge { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .badge svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .job.done .badge { background: var(--ok-soft); color: var(--ok); }
+  .job.failed .badge { background: var(--bad-soft); color: var(--bad); }
+  .job-main { flex: 1; min-width: 0; }
+  .job-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job-status { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job.failed .job-status { color: var(--bad); }
+  .job-buttons { display: flex; gap: 6px; flex: none; }
+  .bar { height: 5px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 12px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .3s; }
+  .bar.indeterminate > i { width: 35%; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+  .job.done .bar, .job.failed .bar { display: none; }
+  details { margin-top: 10px; }
+  summary { color: var(--muted); font-size: 12px; cursor: pointer; width: max-content; }
+  pre {
+    margin: 8px 0 0; max-height: 180px; overflow: auto; padding: 10px 12px; border-radius: 8px;
+    background: var(--surface-2); font: 11.5px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-all; user-select: text;
+  }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { text-align: center; color: var(--muted); padding: 34px 16px; border: 1.5px dashed var(--border); border-radius: 12px; }
+  .empty b { color: var(--text); display: block; margin-bottom: 4px; font-weight: 600; }
+
+  footer { margin-top: auto; padding-top: 28px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; }
+  footer .path { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border); padding: 4px 8px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
+  footer .spacer { flex: 1; }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 20px 16px; }
+    .actions button.primary { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg></div>
+    <div>
+      <h1>HIT Recordings</h1>
+      <p class="sub">Paste a Zoom link. Get the video and the transcript.</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="field-group">
+      <label class="field" for="url">Zoom link</label>
+      <div class="row">
+        <input type="text" id="url" placeholder="https://hit-ac-il.zoom.us/rec/play/…" spellcheck="false" autocomplete="off">
+        <button id="paste" title="Paste link from clipboard">Paste</button>
+      </div>
+    </div>
+    <div class="field-group">
+      <label class="field" for="name">Name <span>(optional, Zoom's title is used if empty)</span></label>
+      <input type="text" id="name" dir="auto" placeholder="e.g. אינפי 2 - הרצאה 5" autocomplete="off">
+    </div>
+    <div class="actions">
+      <label class="toggle">
+        <input type="checkbox" id="transcript" checked>
+        <span class="switch"></span>
+        Save transcript <small>(.txt)</small>
+      </label>
+      <button class="primary" id="go">Download</button>
+    </div>
+  </section>
+
+  <div class="section-head">
+    <h2>Downloads</h2>
+  </div>
+  <ul id="jobs"></ul>
+  <div class="empty" id="empty"><b>Nothing here yet</b>Copy a recording link from Moodle and it appears above automatically.</div>
+
+  <footer>
+    Saving to <span class="path" id="dir">…</span>
+    <button class="link" id="change">Change</button>
+    <button class="link" id="open">Open folder</button>
+  </footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const send = (msg) => window.chrome.webview.postMessage(msg);
+  const jobs = new Map();
+
+  const icons = {
+    queued: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    running: '<svg viewBox="0 0 24 24" class="spin"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>',
+    done: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    failed: '<svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>'
+  };
+
+  function add() {
+    const url = $('url').value.trim();
+    if (!url) { $('url').focus(); return; }
+    send({ type: 'add', url, name: $('name').value.trim(), transcript: $('transcript').checked });
+    $('url').value = '';
+    $('name').value = '';
+    $('url').focus();
+  }
+
+  function render(j) {
+    let el = document.querySelector(`.job[data-id="${j.id}"]`);
+    if (!el) {
+      el = document.createElement('li');
+      el.className = 'job';
+      el.dataset.id = j.id;
+      el.innerHTML = `
+        <div class="job-top">
+          <div class="badge"></div>
+          <div class="job-main"><div class="job-name" dir="auto"></div><div class="job-status" dir="auto"></div></div>
+          <div class="job-buttons"></div>
+        </div>
+        <div class="bar"><i></i></div>
+        <details><summary>Details</summary><pre></pre></details>`;
+      $('jobs').prepend(el);
+    }
+    el.className = 'job ' + j.state;
+    el.querySelector('.badge').innerHTML = icons[j.state] || icons.queued;
+    el.querySelector('.job-name').textContent = j.name || 'Zoom recording';
+    el.querySelector('.job-status').textContent = j.status;
+    const bar = el.querySelector('.bar');
+    bar.classList.toggle('indeterminate', j.progress < 0);
+    bar.querySelector('i').style.width = j.progress < 0 ? '' : j.progress + '%';
+
+    const b = el.querySelector('.job-buttons');
+    b.innerHTML = '';
+    const btn = (label, fn, cls = 'small') => {
+      const x = document.createElement('button');
+      x.className = cls; x.innerHTML = label; x.onclick = fn; b.append(x);
+    };
+    if (j.hasVideo) btn('Play', () => send({ type: 'openFile', id: j.id, which: 'video' }));
+    if (j.hasTranscript) btn('Transcript', () => send({ type: 'openFile', id: j.id, which: 'transcript' }));
+    if (j.hasVideo || j.hasTranscript) btn('Show in folder', () => send({ type: 'showFile', id: j.id }));
+    if (j.state === 'failed') btn('Retry', () => send({ type: 'retry', id: j.id }));
+    if (j.state === 'done' || j.state === 'failed') btn('&times;', () => { send({ type: 'remove', id: j.id }); el.remove(); jobs.delete(j.id); refreshEmpty(); }, 'small icon');
+
+    jobs.set(j.id, j);
+    refreshEmpty();
+  }
+
+  function log(id, line) {
+    const pre = document.querySelector(`.job[data-id="${id}"] pre`);
+    if (!pre) return;
+    pre.textContent += line + '\n';
+    const lines = pre.textContent.split('\n');
+    if (lines.length > 300) pre.textContent = lines.slice(-300).join('\n');
+    pre.scrollTop = pre.scrollHeight;
+  }
+
+  function refreshEmpty() { $('empty').style.display = jobs.size ? 'none' : ''; }
+
+  window.chrome.webview.addEventListener('message', (e) => {
+    const m = e.data;
+    if (m.type === 'settings') { $('dir').textContent = m.saveDir; $('dir').title = m.saveDir; }
+    else if (m.type === 'job') render(m);
+    else if (m.type === 'log') log(m.id, m.line);
+    else if (m.type === 'clipboard') {
+      if (m.force || !$('url').value.trim()) {
+        $('url').value = m.url;
+        $('url').classList.remove('flash'); void $('url').offsetWidth; $('url').classList.add('flash');
+        $('name').focus();
+      }
+    }
+  });
+
+  $('go').onclick = add;
+  $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  $('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  $('paste').onclick = () => send({ type: 'paste' });
+  $('change').onclick = () => send({ type: 'chooseFolder' });
+  $('open').onclick = () => send({ type: 'openFolder' });
+  refreshEmpty();
+  send({ type: 'ready' });
+</script>
+</body>
+</html>
