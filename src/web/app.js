@@ -551,26 +551,14 @@ const SETUP_Q = [
   },
   {
     key: 'exams',
-    ask: () => 'יש לך מבחנים משנים קודמות, עדיף עם פתרונות?',
-    hint: () => `הם הכי חשובים כדי להבין איך המרצה בוחן.${(S.local && S.local.exams) ? ` יש כבר ${S.local.exams} קבצי מבחנים.` : ''} ב-CS24 יש מבחנים של רוב הקורסים: כל קובץ שתוריד שם נשמר אצלי לבד.`,
+    ask: () => 'להוריד בשבילך את כל החומר של הקורס מ-CS24?',
+    hint: () => 'אני אמצא את הקורס ב-CS24 ואוריד את כל מה שיש שם: מבחנים ופתרונות משנים קודמות, בחנים, סיכומים, מחברות של סטודנטים ותרגולים. זה חומר עזר, ו-Moodle נשאר המקור העיקרי.',
     body: (done) => {
       const box = h('<div class="row wrap"></div>');
-      const cs = h('<button class="primary">חפש לי ב-CS24</button>'); cs.onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); done('מ-CS24'); };
-      const pc = h('<button class="ghost">יש לי במחשב</button>'); pc.onclick = () => { send({ type: 'addFiles', course: S.course.name, folder: 'מבחנים' }); done('מהמחשב'); };
-      const no = h('<button class="ghost">אין לי</button>'); no.onclick = () => done('אין');
-      box.append(cs, pc, no);
-      return box;
-    }
-  },
-  {
-    key: 'cs24',
-    ask: () => 'רוצה גם סיכומים ומחברות של סטודנטים מ-CS24?',
-    hint: () => 'לא חובה. מחברת טובה של סטודנט מהקורס עוזרת לי להבין מה באמת נלמד בכיתה.',
-    body: (done) => {
-      const box = h('<div class="row wrap"></div>');
-      const cs = h('<button class="primary">פתח את CS24</button>'); cs.onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); done('כן'); };
-      const no = h('<button class="ghost">לא צריך</button>'); no.onclick = () => done('לא');
-      box.append(cs, no);
+      const yes = h('<button class="primary">כן, תוריד הכל</button>'); yes.onclick = () => { setupAnswers().cs24Auto = true; done('כן, הכל מ-CS24'); };
+      const pc = h('<button class="ghost">יש לי מבחנים במחשב</button>'); pc.onclick = () => send({ type: 'addFiles', course: S.course.name, folder: 'מבחנים' });
+      const no = h('<button class="ghost">לא צריך</button>'); no.onclick = () => { setupAnswers().cs24Auto = false; done('בלי CS24'); };
+      box.append(yes, pc, no);
       return box;
     }
   },
@@ -625,8 +613,7 @@ function renderSetup() {
     const busy = S.setupRunning && S.setupRunning[S.course.name];
     const list = [
       ['book', `מ-Moodle: ${m.files} מצגות וקבצים, ${m.hw} מטלות${m.exams ? `, ${m.exams} מבחנים` : ''}${m.recs ? `, ${m.recs} הקלטות` : ''}`],
-      ['exam', `מבחנים קודמים: ${L.exams ? L.exams + ' קבצים' : ans.exams === 'אין' ? 'אין' : 'מה שתוריד מ-CS24 ייכנס לבד'}`],
-      ['note', `CS24 ומחברת: ${(L.cs24 || 0) + (L.notes || 0)} קבצים`],
+      ['exam', ans.cs24Auto ? 'מ-CS24: כל התיקייה של הקורס - מבחנים, בחנים, סיכומים ומחברות' : `מבחנים קודמים: ${L.exams ? L.exams + ' קבצים' : 'בלי CS24'}`],
       ['sparkles', 'ואז: דף לימוד לכל שיעור, עזרה בשיעורי הבית והכנה למבחן']
     ];
     const row = h(`<div class="qa-row now"><span class="qa-av">${ART.mascot('wave')}</span><div><div class="qa-q">מעולה, יש לי את כל מה שצריך. זה מה שאני הולך לעשות:</div></div></div>`);
@@ -637,10 +624,9 @@ function renderSetup() {
     icons(go);
     go.disabled = !!busy;
     go.onclick = () => {
+      // One request does it all, in order: Moodle, then CS24, then the study material.
       S.setupRunning = S.setupRunning || {}; S.setupRunning[S.course.name] = true;
-      S.learnAfterSync = S.learnAfterSync || {}; S.learnAfterSync[S.course.name] = true;
-      send({ type: 'setupDone', course: S.course.name });
-      syncCourse(true);
+      send({ type: 'setupRun', course: S.course.name, sections: plainSections(), cs24: !!ans.cs24Auto });
       renderSetup();
       toast('מוריד את כל החומר. כשזה ייגמר אתחיל להכין את דפי הלימוד, ואפשר להמשיך לעבוד בינתיים.', { ms: 7000 });
     };
@@ -1179,6 +1165,13 @@ function onMessage(m) {
       if (!S.course || S.course.name !== m.course) break;
       courseStatus(m.text, m.busy, false);
       $('learnAll').disabled = m.busy;
+      break;
+    case 'setupRun':
+      // Downloads finished: the course leaves setup and the study material is being built.
+      if (!m.busy) {
+        if (S.setupRunning) delete S.setupRunning[m.course];
+        if (S.course && S.course.name === m.course) { if (S.local) S.local.setupDone = true; applySetupMode(); setTab('lessons'); }
+      }
       break;
     case 'courseError':
       if (S.course && S.course.id === m.id) { $('lectures').innerHTML = ''; $('lectures').append(h(`<div class="empty">${ART.empty().replace('<svg', '<svg class="art"')}<b>לא הצלחתי לקרוא את הקורס</b><span dir="auto">${esc(m.message)}</span></div>`)); }

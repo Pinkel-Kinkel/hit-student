@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.6.1";
+    public const string Version = "2.7.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -82,8 +82,13 @@ partial class HitStudent : Form
         site = new WebView2 { Dock = DockStyle.Fill };
         sitePanel = new Panel { Visible = false };
         sitePanel.Controls.Add(site);
+        // Hidden browser that walks a course's CS24 folder; it always stays behind the app.
+        cs24View = new WebView2 { Dock = DockStyle.Fill };
+        var cs24Panel = new Panel { Dock = DockStyle.Fill };
+        cs24Panel.Controls.Add(cs24View);
 
         ui = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = BackColor };
+        Controls.Add(cs24Panel);
         Controls.Add(zoomPanel);
         Controls.Add(moodlePanel);
         Controls.Add(ui);
@@ -133,6 +138,11 @@ partial class HitStudent : Form
             await zoom.EnsureCoreWebView2Async(env);
             await moodle.EnsureCoreWebView2Async(env);
             await site.EnsureCoreWebView2Async(env);
+            await cs24View.EnsureCoreWebView2Async(env);
+            cs24View.CoreWebView2.IsMuted = true;
+            cs24View.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            cs24View.CoreWebView2.WebMessageReceived += OnEvalMessage;
+            cs24View.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; };
         }
         catch (Exception ex)
         {
@@ -449,6 +459,8 @@ partial class HitStudent : Form
             case "linkNotability": LinkNotability(course, Str(m, "folder")); break;
             case "openNotability": OpenNotability(); break;
             case "importTimetable": ImportTimetable(); break;
+            case "cs24Sync": Cs24Sync(course); break;
+            case "setupRun": SetupRun(course, m["sections"] as System.Collections.ArrayList, Bool(m, "cs24")); break;
             case "prepareCourses": PrepareCourses(m["courses"] as System.Collections.ArrayList); break;
 
             // Sites inside the app

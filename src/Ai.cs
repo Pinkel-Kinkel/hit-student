@@ -399,7 +399,7 @@ partial class HitStudent
 
     static bool IsUsageLimit(string text)
     {
-        return Regex.IsMatch(text ?? "", @"usage limit|rate limit|limit reached|hit your limit|quota|RESOURCE_EXHAUSTED|429|5-hour limit|weekly limit", RegexOptions.IgnoreCase);
+        return Regex.IsMatch(text ?? "", @"usage limit|session limit|rate limit|limit reached|hit your limit|hit your session|quota|RESOURCE_EXHAUSTED|429|5-hour limit|weekly limit", RegexOptions.IgnoreCase);
     }
 
     // "resets 7pm" / "resets at 19:00" -> shown to the student as-is, if the AI said it.
@@ -600,8 +600,10 @@ partial class HitStudent
           .Append(" \"" + LectureRecordings + "\" = הקלטות ההרצאות לפי מספר, \"הרצאה N תמלול.txt\" הוא התמלול של הרצאה N (אל תקרא את קבצי הוידאו);")
           .Append(" \"" + Notebook + "\" = המחברת של הסטודנט מ-Notability;")
           .Append(" \"" + Exams + "\" = מבחנים משנים קודמות ופתרונותיהם;")
-          .Append(" \"" + Cs24Folder + "\" = סיכומים, מחברות של סטודנטים ומבחנים מאתר CS24;")
-          .Append(" \"" + CourseInfoFolder + "\" = סילבוס ומידע כללי.");
+          .Append(" \"" + Cs24Folder + "\" ו-\"" + Exams + "/" + Cs24Folder + "\" = סיכומים, מחברות של סטודנטים ומבחנים מאתר CS24;")
+          .Append(" \"" + CourseInfoFolder + "\" = סילבוס ומידע כללי.")
+          .Append("\nסדר עדיפויות: המקור העיקרי והמחייב הוא החומר מ-Moodle (תיקיות \"שיעור N\", \"" + General + "\", \"" + CourseInfoFolder + "\", ו-\"" + Exams + "\" שלא מ-CS24) - הוא של הסמסטר הנוכחי ושל המרצה הנוכחי.")
+          .Append(" חומר מ-CS24 הוא עזר משני: ייתכן שהוא משנים קודמות או ממרצים אחרים. השתמש בו להשלמה, לדוגמאות ולתרגול, ואם יש סתירה - Moodle קובע.");
         if (File.Exists(Path.Combine(CourseDir(course), LecturerProfile)))
             sb.Append("\nיש קובץ \"" + LecturerProfile + "\" שמתאר איך המרצה חושב ובוחן - קרא אותו והשתמש בו.");
         return sb.ToString();

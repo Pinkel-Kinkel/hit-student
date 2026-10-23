@@ -104,6 +104,27 @@ partial class HitStudent
                 }
                 try { Directory.Delete(tempRoot, true); } catch { }
 
+                // CS24: the course folder is found for each current course, and its first file resolves to a public address.
+                var cs24Found = new List<object>();
+                try
+                {
+                    var rootList = await Cs24List(Cs24DefaultRoot);
+                    string diag = await EvalAsync(cs24View, "return JSON.stringify({href: location.href, title: document.title, anchors: document.querySelectorAll('a[href^=\"/drive?\"]').length, vis: document.visibilityState});", 5000);
+                    report["cs24Root"] = new { entries = rootList.Select(e => e.Name).ToList(), page = diag };
+                }
+                catch (Exception ex) { report["cs24Root"] = ex.Message; }
+                foreach (var c in current)
+                {
+                    var folder = await Cs24FindCourse(Str(c, "name"));
+                    if (folder == null) { cs24Found.Add(new { course = Str(c, "name"), cs24 = "" }); continue; }
+                    var entries = await Cs24List(folder.Href);
+                    var firstFile = entries.FirstOrDefault(e => !e.Folder);
+                    string asset = firstFile != null ? await Cs24FileUrl(firstFile.Href) : null;
+                    cs24Found.Add(new { course = Str(c, "name"), cs24 = folder.Name, folders = entries.Count(e => e.Folder), files = entries.Count(e => !e.Folder), fileOk = asset != null });
+                }
+                report["cs24"] = cs24Found;
+                check("CS24 course folders", cs24Found.Count > 0 && cs24Found.Any(x => (string)x.GetType().GetProperty("cs24").GetValue(x) != ""), json.Serialize(cs24Found));
+
                 // --full: the whole flow on one real lesson - download it from Moodle, then build its study page.
                 if (Environment.GetCommandLineArgs().Contains("--full"))
                 {

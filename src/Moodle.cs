@@ -63,7 +63,8 @@ partial class HitStudent
     {
         Uri src;
         if (!Uri.TryCreate(e.Source, UriKind.Absolute, out src)) return;
-        if (!src.Host.EndsWith("hit.ac.il", StringComparison.OrdinalIgnoreCase) && !src.Host.EndsWith("zoom.us", StringComparison.OrdinalIgnoreCase)) return;
+        if (!src.Host.EndsWith("hit.ac.il", StringComparison.OrdinalIgnoreCase) && !src.Host.EndsWith("zoom.us", StringComparison.OrdinalIgnoreCase)
+            && !src.Host.Equals("cs24.co.il", StringComparison.OrdinalIgnoreCase)) return;
         try
         {
             var m = json.Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
