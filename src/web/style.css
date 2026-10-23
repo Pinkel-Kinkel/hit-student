@@ -1,3 +1,15 @@
+/* Course setup as a short conversation */
+.qa { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.qa-row { display: flex; gap: 12px; align-items: flex-start; }
+.qa-av { width: 40px; height: 40px; flex: none; border-radius: 12px; overflow: hidden; }
+.qa-av svg { width: 40px; height: 40px; }
+.qa-row.now .qa-av { width: 56px; height: 56px; border-radius: 16px; }
+.qa-row.now .qa-av svg { width: 56px; height: 56px; }
+.qa-q { background: var(--surface-2); border-radius: 14px; border-start-start-radius: 4px; padding: 9px 13px; font-weight: 600; width: fit-content; }
+.qa-row.now .qa-q { font-size: 16px; background: var(--accent-soft); color: var(--accent-text); }
+.qa-hint { margin: 6px 4px 0; font-size: 13px; }
+.qa-a { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-radius: 14px; border-end-end-radius: 4px; padding: 7px 13px; font-size: 13px; max-width: 70%; }
+.qa-body { margin-inline-start: 68px; animation: rise .35s var(--ease) both; }
 :root {
   --bg: #f4f5fb;
   --bg-2: #eceefa;

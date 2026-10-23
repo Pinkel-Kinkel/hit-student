@@ -127,7 +127,8 @@ partial class HitStudent
         if (!src.StartsWith(MoodleBase, StringComparison.OrdinalIgnoreCase) || src.IndexOf("/login/", StringComparison.OrdinalIgnoreCase) >= 0) return false;
         try
         {
-            string v = await EvalAsync(moodle, "return (typeof M!=='undefined'&&M.cfg&&M.cfg.sesskey)||'';", 4000);
+            // A guest on Moodle's front page also has a sesskey, so check that someone is actually signed in.
+            string v = await EvalAsync(moodle, "return (typeof M!=='undefined'&&M.cfg&&M.cfg.sesskey&&document.body&&!document.body.classList.contains('notloggedin')&&!document.querySelector('a[href*=\"/login/index.php\"].btn, .usermenu .login'))?M.cfg.sesskey:'';", 4000);
             return json.Deserialize<string>(v).Length > 0;
         }
         catch { return false; }
@@ -324,10 +325,25 @@ return out;";
     {
         try
         {
+            // Show the last known lessons at once; the fresh list from Moodle follows a moment later.
+            var cachedMeta = LoadMeta(name);
+            var cached = cachedMeta.ContainsKey("sectionsCache") ? cachedMeta["sectionsCache"] as ArrayList : null;
+            if (cached != null && cached.Count > 0)
+            {
+                foreach (Dictionary<string, object> s in cached) s["local"] = LocalInfo(name, Int(s, "num"));
+                Send(new
+                {
+                    type = "course", id = id, name = name, folder = CourseDir(name), sections = cached, cached = true,
+                    lecturer = Str(cachedMeta, "lecturer"), lecturerGuess = cachedMeta.ContainsKey("lecturerGuess") ? cachedMeta["lecturerGuess"] : new ArrayList(),
+                    local = CourseLocal(name), notability = NotabilityInfo(name)
+                });
+            }
+
             string v = await WithMoodle(() => EvalAsync(moodle, SectionsJs.Replace("COURSE_ID", id.ToString()), 120000));
             var sections = json.Deserialize<List<Dictionary<string, object>>>(v);
             var meta = LoadMeta(name);
             meta["courseId"] = id;
+            meta["sectionsCache"] = json.DeserializeObject(v);
             if (Str(meta, "lecturer").Length == 0 && !meta.ContainsKey("lecturerGuess"))
             {
                 try
@@ -411,7 +427,8 @@ return out;";
             dir = dir, exists = Directory.Exists(dir), exams = CountFiles(Path.Combine(dir, Exams)), infoFiles = CountFiles(Path.Combine(dir, CourseInfoFolder)),
             notes = CountFiles(Path.Combine(dir, Notebook)), cs24 = CountFiles(Path.Combine(dir, Cs24Folder)), studyPages = pageCount, info = courseInfo,
             examPrep = File.Exists(prep) ? prep : null, lecturerProfile = File.Exists(profile) ? profile : null,
-            courseInfoMd = File.Exists(Path.Combine(dir, CourseInfoFolder + ".md")) ? Path.Combine(dir, CourseInfoFolder + ".md") : null
+            courseInfoMd = File.Exists(Path.Combine(dir, CourseInfoFolder + ".md")) ? Path.Combine(dir, CourseInfoFolder + ".md") : null,
+            setupDone = Bool(LoadMeta(course), "setupDone")
         };
     }
 

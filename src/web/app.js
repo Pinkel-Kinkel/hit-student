@@ -75,6 +75,22 @@ function md(text) {
   return html.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre>${blocks[i]}</pre>`);
 }
 
+// Gemini sign-in: Google's page opened in the browser; after signing in it shows a code, which goes here.
+function showGeminiCode() {
+  if ($('gemCode')) return;
+  const card = h(`<div class="overlay" id="gemCode"><div class="wizard" style="width:min(480px,100%)">
+    <div class="content"><h1 style="font-size:21px">התחברות ל-Gemini</h1>
+    <p class="lead">נפתח דף ההתחברות של Google בדפדפן. התחבר לחשבון שלך, אשר, ו-Google יציג קוד. העתק אותו והדבק כאן.</p>
+    <input type="text" class="ltr" placeholder="הדבק את הקוד מ-Google" autocomplete="off">
+    <div class="foot"><div class="grow"></div><button class="ghost" data-x>ביטול</button><button class="primary big" data-go>התחבר</button></div></div></div></div>`);
+  const go = () => { const v = card.querySelector('input').value.trim(); if (!v) return; send({ type: 'geminiCode', code: v }); card.remove(); toast('מתחבר ל-Gemini...'); };
+  card.querySelector('[data-go]').onclick = go;
+  card.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  card.querySelector('[data-x]').onclick = () => { send({ type: 'cancelGeminiLogin' }); card.remove(); };
+  document.body.append(card);
+  card.querySelector('input').focus();
+}
+
 // Usage limit: a small friendly card instead of an error, with a one-click switch to the other AI.
 function showLimit(m) {
   if ($('limitCard')) return;
@@ -426,77 +442,166 @@ function setTab(tab) {
   if (tab === 'recs') renderRecs();
 }
 
-// ---------- "How to start": everything the course needs, before the AI starts building ----------
-function setupSteps() {
-  const L = S.local || {};
-  const files = S.sections.reduce((a, s) => a + ((s.local && s.local.files) || 0), 0);
-  const zoomTool = S.sections.flatMap(s => s.items).find(i => i.mod === 'lti' && /zoom|זום/i.test(i.name));
-  const videos = S.sections.reduce((a, s) => a + ((s.local && s.local.videos) || 0), 0);
-  return [
-    { key: 'moodle', done: files > 0, title: 'חומרי הקורס מה-Moodle',
-      text: files ? `${files} קבצים ירדו לתיקיית הקורס. ממשיך להתעדכן כל פעם שנכנסים.` : 'יורדים עכשיו לבד. זה לוקח דקה-שתיים.',
-      act: files ? null : ['עדכן עכשיו', () => syncCourse(false)] },
-    { key: 'lecturer', done: !!$('lecturer').value.trim(), title: 'מי המרצה',
-      text: $('lecturer').value.trim() ? $('lecturer').value.trim() : 'כתוב את שם המרצה למעלה, ליד שם הקורס. זה עוזר להתאים את החומר לסגנון שלו.' },
-    { key: 'exams', done: (L.exams || 0) > 0, title: 'מבחנים משנים קודמות',
-      text: L.exams ? `${L.exams} קבצי מבחנים בקורס.` : 'הכי חשוב להכנה למבחן. ב-CS24 יש מבחנים ופתרונות משנים קודמות: לחץ, בחר את הקורס שם, והורד. הקבצים נשמרים כאן לבד.',
-      act: ['חפש ב-CS24', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); }] },
-    { key: 'recs', done: videos > 0, optional: !zoomTool, title: 'הקלטות השיעורים',
-      text: videos ? `${videos} הקלטות עם תמלול.` : zoomTool ? 'לקורס יש כניסה לזום עם הקלטות. בלשונית "הקלטות" אפשר לפתוח אותן ולהוריד.' : 'אין הקלטות בקורס הזה. זה בסדר, הכל יעבוד גם בלעדיהן.',
-      act: zoomTool && !videos ? ['להקלטות', () => setTab('recs')] : null },
-    { key: 'cs24', done: (L.cs24 || 0) > 0, optional: true, title: 'סיכומים ומחברות מ-CS24',
-      text: L.cs24 ? `${L.cs24} קבצים מ-CS24.` : 'לא חובה. מחברות של סטודנטים מהקורס עוזרות להבין את החומר.',
-      act: ['פתח את CS24', () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); }] },
-    { key: 'notes', done: (L.notes || 0) > 0, optional: true, title: 'המחברת שלך (Notability)',
-      text: L.notes ? `${L.notes} דפי מחברת.` : 'לא חובה. אם אתה כותב ב-Notability, חבר את המחברת של הקורס.',
-      act: ['חבר', () => setTab('notes')] }
-  ];
+// ---------- Course setup: a few questions, then one "download everything" ----------
+// A new course opens on this and nothing else. The app asks, the student answers, and only then it downloads
+// everything at once and starts preparing the study material.
+function moodleSummary() {
+  const items = S.sections.flatMap(s => s.items);
+  const isExam = (i) => /מבחן|בחינה|מועד [אבג]|exam/i.test(i.name) && i.mod !== 'quiz';
+  return {
+    files: items.filter(i => ['resource', 'file', 'folder', 'page', 'book'].includes(i.mod) && !isExam(i)).length,
+    hw: items.filter(i => i.mod === 'assign').length,
+    exams: items.filter(isExam).length,
+    recs: items.filter(i => i.mod === 'zoom' && /zoom\.us\/rec/i.test(i.url || '')).length,
+    zoomTool: items.some(i => i.mod === 'lti' && /zoom|זום/i.test(i.name))
+  };
 }
-// One step at a time. Steps the app already finished in the background are ticked and skipped on their own.
+function setupAnswers() {
+  const k = S.course ? S.course.name : '';
+  S.setupAns = S.setupAns || {};
+  return S.setupAns[k] = S.setupAns[k] || {};
+}
+function inSetup() { return !!(S.local && !S.local.setupDone && !S.local.studyPages); }
+function applySetupMode() {
+  const on = inSetup();
+  document.querySelector('.course-actions').hidden = on;
+  $('courseTabs').hidden = on;
+  $('courseBody').classList.toggle('no-chat', on || S.chatHidden);
+  $('chat').hidden = on || S.chatHidden;
+  if (on) setTab('setup');
+}
+
+const SETUP_Q = [
+  {
+    key: 'lecturer',
+    ask: () => 'מי המרצה של הקורס?',
+    hint: () => $('lecturer').value ? 'מצאתי את השם ב-Moodle. אם זה לא נכון, תקן.' : 'זה עוזר לי לכתוב את החומר בסגנון שלו.',
+    body: (done) => {
+      const box = h('<div class="row wrap"></div>');
+      const inp = h('<input type="text" dir="auto" placeholder="שם המרצה" style="max-width:300px">');
+      inp.value = $('lecturer').value;
+      const ok = h('<button class="primary">זה נכון</button>');
+      ok.onclick = () => { $('lecturer').value = inp.value.trim(); $('lecturer').onchange(); done(inp.value.trim() || 'לא יודע'); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') ok.onclick(); };
+      box.append(inp, ok);
+      return box;
+    }
+  },
+  {
+    key: 'moodle',
+    ask: () => 'זה מה שמצאתי ב-Moodle. להוריד את הכל?',
+    hint: () => {
+      const m = moodleSummary();
+      const parts = [`${m.files} מצגות וקבצים`, `${m.hw} מטלות ותרגילים`];
+      if (m.exams) parts.push(`${m.exams} מבחנים`);
+      if (m.recs) parts.push(`${m.recs} הקלטות`);
+      let t = parts.join(' · ') + '.';
+      if (!m.recs) t += m.zoomTool ? ' ההקלטות של הקורס נמצאות בכלי הזום של Moodle, שלא מאפשר הורדה, אז אכין הכל בלעדיהן.' : ' אין הקלטות בקורס, וזה בסדר.';
+      return t;
+    },
+    body: (done) => {
+      const box = h('<div class="row wrap"></div>');
+      const yes = h('<button class="primary">כן, את הכל</button>'); yes.onclick = () => done('כן, את הכל');
+      const more = h('<button class="ghost">יש לי עוד קבצים במחשב</button>'); more.onclick = () => send({ type: 'addFiles', course: S.course.name, folder: 'מידע על הקורס' });
+      box.append(yes, more);
+      return box;
+    }
+  },
+  {
+    key: 'exams',
+    ask: () => 'יש לך מבחנים משנים קודמות, עדיף עם פתרונות?',
+    hint: () => `הם הכי חשובים כדי להבין איך המרצה בוחן.${(S.local && S.local.exams) ? ` יש כבר ${S.local.exams} קבצי מבחנים.` : ''} ב-CS24 יש מבחנים של רוב הקורסים: כל קובץ שתוריד שם נשמר אצלי לבד.`,
+    body: (done) => {
+      const box = h('<div class="row wrap"></div>');
+      const cs = h('<button class="primary">חפש לי ב-CS24</button>'); cs.onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'מבחנים'; syncDownloadTarget(); openSite('cs24'); done('מ-CS24'); };
+      const pc = h('<button class="ghost">יש לי במחשב</button>'); pc.onclick = () => { send({ type: 'addFiles', course: S.course.name, folder: 'מבחנים' }); done('מהמחשב'); };
+      const no = h('<button class="ghost">אין לי</button>'); no.onclick = () => done('אין');
+      box.append(cs, pc, no);
+      return box;
+    }
+  },
+  {
+    key: 'cs24',
+    ask: () => 'רוצה גם סיכומים ומחברות של סטודנטים מ-CS24?',
+    hint: () => 'לא חובה. מחברת טובה של סטודנט מהקורס עוזרת לי להבין מה באמת נלמד בכיתה.',
+    body: (done) => {
+      const box = h('<div class="row wrap"></div>');
+      const cs = h('<button class="primary">פתח את CS24</button>'); cs.onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'CS24'; syncDownloadTarget(); openSite('cs24'); done('כן'); };
+      const no = h('<button class="ghost">לא צריך</button>'); no.onclick = () => done('לא');
+      box.append(cs, no);
+      return box;
+    }
+  },
+  {
+    key: 'notes',
+    ask: () => 'אתה כותב בהרצאות ב-Notability?',
+    hint: () => 'אם כן, אשתמש גם במחברת שלך. מייצאים אותה ל-PDF לתיקייה "מחברת" של הקורס.',
+    body: (done) => {
+      const box = h('<div class="row wrap"></div>');
+      const y = h('<button class="primary">כן, פתח את Notability</button>'); y.onclick = () => { send({ type: 'openNotability', course: S.course.name }); done('כן'); };
+      const n = h('<button class="ghost">לא</button>'); n.onclick = () => done('לא');
+      box.append(y, n);
+      return box;
+    }
+  }
+];
+
 function renderSetup() {
   const p = $('pane-setup'); p.innerHTML = '';
-  const steps = setupSteps();
-  const key = S.course ? S.course.name : '';
-  S.setupSkipped = S.setupSkipped || {};
-  const skipped = S.setupSkipped[key] = S.setupSkipped[key] || new Set();
-  const current = steps.find(s => !s.done && !skipped.has(s.key));
-  const doneCount = steps.filter(s => s.done || skipped.has(s.key)).length;
-  const dots = steps.map(s => `<i class="${s.done ? 'on' : s === current ? 'now' : skipped.has(s.key) ? 'skip' : ''}"></i>`).join('');
-  $('tabSetup').textContent = steps.filter(s => !s.done && !s.optional).length || '✓';
-
-  if (!current) {
-    const card = h(`<div class="card pad-lg setup-step"><div class="step-dots">${dots}</div>
-      <div style="width:220px;margin:6px auto 0">${ART.done().replace('<svg', '<svg style="width:220px;height:134px"')}</div>
-      <h2 style="text-align:center">הקורס מוכן ללמידה</h2>
-      <p class="muted" style="text-align:center;margin:8px auto 18px;max-width:520px">${aiName()} יבנה עכשיו דף לימוד לכל שיעור, עזרה לשיעורי הבית והכנה למבחן, מכל החומר שנאסף. זה לוקח זמן, ואפשר להמשיך לעבוד בינתיים.</p>
-      <div class="row" style="justify-content:center"><button class="primary big" id="startLearning"><span data-ic="sparkles"></span>התחל ללמוד את הקורס</button></div></div>`);
-    card.querySelector('#startLearning').onclick = () => { $('learnAll').click(); setTab('lessons'); };
-    p.append(card);
-    return;
+  const ans = setupAnswers();
+  const current = SETUP_Q.find(q => !(q.key in ans));
+  const answered = SETUP_Q.filter(q => q.key in ans);
+  $('tabSetup').textContent = current ? SETUP_Q.length - answered.length : '✓';
+  const wrap = h(`<div class="card pad-lg setup-step"><div class="step-dots">${SETUP_Q.map(q => `<i class="${q.key in ans ? 'on' : q === current ? 'now' : ''}"></i>`).join('')}<i class="${current ? '' : 'now'}"></i></div><div class="qa"></div></div>`);
+  const qa = wrap.querySelector('.qa');
+  // What was already asked and answered, as a short conversation.
+  answered.forEach(q => {
+    const asked = h(`<div class="qa-row"><span class="qa-av">${ART.mascot()}</span><div class="qa-q"></div></div>`);
+    asked.querySelector('.qa-q').textContent = q.ask();
+    qa.append(asked);
+    const a = h('<div class="qa-a" dir="auto"></div>'); a.textContent = ans[q.key]; qa.append(a);
+  });
+  if (current) {
+    const row = h(`<div class="qa-row now"><span class="qa-av">${ART.mascot('wave')}</span><div><div class="qa-q"></div><div class="qa-hint muted" dir="auto"></div></div></div>`);
+    row.querySelector('.qa-q').textContent = current.ask();
+    row.querySelector('.qa-hint').textContent = current.hint();
+    qa.append(row);
+    const body = current.body((answer) => { ans[current.key] = answer; renderSetup(); });
+    body.classList.add('qa-body');
+    qa.append(body);
+  } else {
+    // Everything answered: one button downloads it all and starts preparing.
+    const L = S.local || {};
+    const m = moodleSummary();
+    const busy = S.setupRunning && S.setupRunning[S.course.name];
+    const list = [
+      ['book', `מ-Moodle: ${m.files} מצגות וקבצים, ${m.hw} מטלות${m.exams ? `, ${m.exams} מבחנים` : ''}${m.recs ? `, ${m.recs} הקלטות` : ''}`],
+      ['exam', `מבחנים קודמים: ${L.exams ? L.exams + ' קבצים' : ans.exams === 'אין' ? 'אין' : 'מה שתוריד מ-CS24 ייכנס לבד'}`],
+      ['note', `CS24 ומחברת: ${(L.cs24 || 0) + (L.notes || 0)} קבצים`],
+      ['sparkles', 'ואז: דף לימוד לכל שיעור, עזרה בשיעורי הבית והכנה למבחן']
+    ];
+    const row = h(`<div class="qa-row now"><span class="qa-av">${ART.mascot('wave')}</span><div><div class="qa-q">מעולה, יש לי את כל מה שצריך. זה מה שאני הולך לעשות:</div></div></div>`);
+    qa.append(row);
+    const ul = h('<div class="qa-body" style="display:grid;gap:8px"></div>');
+    list.forEach(([ic, t]) => { const r = h(`<div class="check-row"><div class="ci" data-ic="${ic}"></div><div class="grow"><small style="color:var(--text);font-size:13.5px"></small></div></div>`); r.querySelector('small').textContent = t; ul.append(r); });
+    const go = h(`<button class="primary big" style="margin-top:8px">${busy ? '<span class="spinner"></span> מוריד ומכין...' : '<span data-ic="download"></span>הורד הכל והתחל להכין'}</button>`);
+    icons(go);
+    go.disabled = !!busy;
+    go.onclick = () => {
+      S.setupRunning = S.setupRunning || {}; S.setupRunning[S.course.name] = true;
+      S.learnAfterSync = S.learnAfterSync || {}; S.learnAfterSync[S.course.name] = true;
+      send({ type: 'setupDone', course: S.course.name });
+      syncCourse(true);
+      renderSetup();
+      toast('מוריד את כל החומר. כשזה ייגמר אתחיל להכין את דפי הלימוד, ואפשר להמשיך לעבוד בינתיים.', { ms: 7000 });
+    };
+    const back = h('<button class="ghost" style="margin-top:8px">שנה תשובות</button>');
+    back.onclick = () => { S.setupAns[S.course.name] = {}; renderSetup(); };
+    ul.append(h('<div class="row wrap"></div>'));
+    ul.lastChild.append(go, back);
+    qa.append(ul);
   }
-  const card = h(`<div class="card pad-lg setup-step"><div class="step-dots">${dots}</div>
-    <div class="muted" style="font-size:12.5px;margin-top:10px">שלב ${steps.indexOf(current) + 1} מתוך ${steps.length}</div>
-    <h2 style="margin:4px 0 6px">${current.title}${current.optional ? ' <span class="chip">לא חובה</span>' : ''}</h2>
-    <p class="muted" style="margin:0 0 18px" dir="auto"></p>
-    <div class="row wrap"></div></div>`);
-  card.querySelector('p').textContent = current.text;
-  const row = card.querySelector('.row');
-  if (current.key === 'lecturer') {
-    const inp = h('<input type="text" dir="auto" placeholder="שם המרצה" style="max-width:280px">');
-    inp.value = $('lecturer').value;
-    const save = h('<button class="primary">שמור</button>');
-    save.onclick = () => { $('lecturer').value = inp.value.trim(); $('lecturer').onchange(); renderSetup(); };
-    row.append(inp, save);
-  } else if (current.act) {
-    const b = h(`<button class="primary">${current.act[0]}</button>`); b.onclick = current.act[1]; row.append(b);
-  }
-  if (current.key === 'moodle') row.append(h('<span class="row muted" style="gap:8px"><span class="spinner"></span>מוריד ברקע...</span>'));
-  if (current.key !== 'moodle') {
-    const next = h(`<button class="ghost">${current.optional ? 'דלג' : 'אחר כך'}</button>`);
-    next.onclick = () => { skipped.add(current.key); renderSetup(); };
-    row.append(next);
-  }
-  p.append(card);
+  p.append(wrap);
 }
 
 // ---------- Recordings of the course ----------
@@ -997,14 +1102,15 @@ function onMessage(m) {
       if (!S.course || S.course.id !== m.id) break;
       S.sections = m.sections.map(s => Object.assign(s, { status: '', busy: false, aiBusy: false }));
       S.local = m.local; S.notability = m.notability;
-      $('lecturer').value = m.lecturer || '';
-      if (!m.lecturer && m.lecturerGuess && m.lecturerGuess.length) { $('lecturer').value = m.lecturerGuess[0]; send({ type: 'setLecturer', course: S.course.name, name: m.lecturerGuess[0] }); toast(`זיהיתי את המרצה: ${m.lecturerGuess[0]}. אפשר לתקן למעלה.`); }
-      else if (!m.lecturer) setTimeout(() => $('lecturer').focus(), 600);
+      if (document.activeElement !== $('lecturer')) $('lecturer').value = m.lecturer || '';
+      // The lecturer found in Moodle is offered in the setup questions, not announced with a pop-up.
+      if (!m.lecturer && m.lecturerGuess && m.lecturerGuess.length && !$('lecturer').value) $('lecturer').value = m.lecturerGuess[0];
       renderCourseHeader(); renderLectures();
-      // A course that hasn't been set up yet opens on "how to start"; afterwards on the lessons.
-      setTab(S.local && S.local.studyPages ? 'lessons' : 'setup');
-      // The AI reads the files on this computer, so new material is pulled from Moodle as soon as the course opens.
-      if (S.settings.autoSync !== false) syncCourse(true);
+      // A course that hasn't been set up yet shows only the setup questions; afterwards the lessons.
+      if (inSetup()) applySetupMode();
+      else { applySetupMode(); if (!m.cached || S.tab === 'setup') setTab(S.tab === 'setup' || !S.tab ? 'lessons' : S.tab); }
+      // Once a course is set up, new material is pulled from Moodle whenever it opens.
+      if (!m.cached && !inSetup() && S.settings.autoSync !== false) syncCourse(true);
       break;
     }
     case 'learnStatus':
@@ -1037,6 +1143,14 @@ function onMessage(m) {
       if (!S.course || S.course.name !== m.course) break;
       courseStatus(m.text, m.busy, m.error);
       if (!m.busy) { S.infoBusy = false; S.examBusy = false; if (S.tab !== 'lessons') setTab(S.tab); }
+      // After the setup questions: everything is downloaded, so start preparing the study material.
+      if (m.synced && S.learnAfterSync && S.learnAfterSync[m.course]) {
+        delete S.learnAfterSync[m.course];
+        if (S.setupRunning) delete S.setupRunning[m.course];
+        if (S.local) S.local.setupDone = true;
+        applySetupMode(); setTab('lessons');
+        send({ type: 'learnCourse', course: S.course.name, sections: plainSections() });
+      }
       if (m.synced && S.pendingChat) {
         const p = S.pendingChat; S.pendingChat = null;
         if (p.scope !== S.chatScope) setChatScope(p.scope);
@@ -1084,6 +1198,7 @@ function onMessage(m) {
       syncCourse(true);
       break;
     case 'aiLimit': showLimit(m); break;
+    case 'geminiCode': showGeminiCode(); break;
     case 'job': renderJob(m); break;
     case 'log': jobLog(m.id, m.line); break;
     case 'clipboard': {

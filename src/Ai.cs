@@ -245,18 +245,58 @@ partial class HitStudent
             string settingsFile = Path.Combine(GeminiDir, "settings.json");
             if (!File.Exists(settingsFile))
                 File.WriteAllText(settingsFile, "{\n  \"security\": { \"auth\": { \"selectedType\": \"oauth-personal\" } }\n}\n", new UTF8Encoding(false));
-            var r = await Exec(FindGemini(), "-p \"Reply with OK\"", Home, 600000,
-                new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" }, { "PATH", NodePath() } });
-            if (!GeminiGoogleSignedIn())
+            // Gemini CLI can't open a browser from a hidden process. With NO_BROWSER it prints a Google sign-in link and
+            // waits for the code Google shows after signing in; the app opens the link and asks the student for that code.
+            var psi = new ProcessStartInfo(FindGemini(), "-p \"Reply with OK\"")
             {
-                Match url = Regex.Match(r.Item2, @"https://accounts\.google\.com/\S+");
-                if (url.Success) OpenExternal(url.Value);
-                else Toast("ההתחברות ל-Google לא הסתיימה. " + Trunc(r.Item2, 160), true);
-            }
+                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Home,
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+            };
+            psi.EnvironmentVariables["GEMINI_DEFAULT_AUTH_TYPE"] = "oauth-personal";
+            psi.EnvironmentVariables["NO_BROWSER"] = "true";
+            psi.EnvironmentVariables["PATH"] = NodePath();
+            var p = new Process { StartInfo = psi };
+            geminiLogin = p;
+            bool opened = false;
+            DataReceivedEventHandler onLine = (s, e) =>
+            {
+                if (e.Data == null || opened) return;
+                Match url = Regex.Match(e.Data, @"https://accounts\.google\.com/\S+");
+                if (!url.Success) return;
+                opened = true;
+                BeginInvoke((MethodInvoker)delegate { OpenExternal(url.Value); Send(new { type = "geminiCode" }); });
+            };
+            p.OutputDataReceived += onLine;
+            p.ErrorDataReceived += onLine;
+            p.Start();
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            await Task.Run(() => p.WaitForExit(600000));
+            if (!p.HasExited) try { p.Kill(); } catch { }
+            geminiLogin = null;
+            if (!GeminiGoogleSignedIn()) Toast("ההתחברות ל-Google לא הסתיימה. אפשר לנסות שוב, או להתחבר עם מפתח.", true);
         }
         catch (Exception ex) { Toast(ex.Message, true); }
         setupState = "";
         await SendAiStatus();
+    }
+
+    Process geminiLogin;
+
+    // The code Google showed after signing in, typed by the student into the app.
+    void GeminiCode(string code)
+    {
+        var p = geminiLogin;
+        code = (code ?? "").Trim();
+        if (p == null || p.HasExited || code.Length == 0 || code.Length > 300 || code.Contains("\n")) return;
+        try { p.StandardInput.WriteLine(code); p.StandardInput.Flush(); } catch { }
+    }
+
+    void CancelGeminiLogin()
+    {
+        var p = geminiLogin;
+        if (p != null && !p.HasExited) try { p.Kill(); } catch { }
     }
 
     void InstallSkill()

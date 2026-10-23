@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.4.0";
+    public const string Version = "2.5.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -356,6 +356,13 @@ partial class HitStudent : Form
             case "setupClaude": SetupClaude(); break;
             case "setupGemini": SetupGemini(); break;
             case "loginGemini": LoginGemini(); break;
+            case "geminiCode": GeminiCode(Str(m, "code")); break;
+            case "setupDone":
+                var sm = LoadMeta(course);
+                sm["setupDone"] = true;
+                SaveMeta(course, sm);
+                break;
+            case "cancelGeminiLogin": CancelGeminiLogin(); break;
             case "setGeminiKey":
                 settings["geminiKey"] = Protect(Str(m, "key").Trim());
                 SaveSettings();
