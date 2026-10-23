@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+<title>HIT Student</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="splash" id="splash">
+  <div class="box">
+    <div class="logo" id="splashLogo"></div>
+    <b>HIT Student</b>
+    <small id="splashText">מכין את סביבת הלימוד שלך...</small>
+    <div class="track"><i></i></div>
+  </div>
+</div>
+
+<div class="app">
+  <nav class="side">
+    <button class="brand" id="brand" title="מסך הבית">
+      <div class="logo" id="navLogo"></div>
+      <div><b>HIT Student</b><small>כל הלימודים במקום אחד</small></div>
+    </button>
+    <button class="nav-item active" data-view="home"><span class="ni" data-ic="home"></span><span class="nav-text">בית</span></button>
+    <button class="nav-item" data-view="courses"><span class="ni" data-ic="book"></span><span class="nav-text">הקורסים שלי</span></button>
+    <button class="nav-item" data-view="recordings"><span class="ni" data-ic="video"></span><span class="nav-text">הקלטות</span><span class="count" id="jobCount" hidden>0</span></button>
+    <button class="nav-item" data-view="sites"><span class="ni" data-ic="globe"></span><span class="nav-text">אתרים</span></button>
+    <button class="nav-item" data-view="settings"><span class="ni" data-ic="settings"></span><span class="nav-text">הגדרות</span></button>
+    <div class="grow"></div>
+    <button class="status-pill" id="moodlePill"><span class="dot" id="moodleDot"></span><span><span id="moodleText">Moodle</span><small id="moodleSub">בודק...</small></span></button>
+    <button class="status-pill" id="aiPill"><span class="dot" id="aiDot"></span><span><span id="aiText">AI</span><small id="aiSub">בודק...</small></span></button>
+  </nav>
+
+  <main id="main">
+    <!-- Home -->
+    <section class="view active" id="view-home">
+      <div class="page">
+        <div id="banners"></div>
+        <div class="hero">
+          <div class="text">
+            <div class="date" id="today"></div>
+            <h1 id="greeting">שלום!</h1>
+            <p id="heroLine">טוען את מה שמחכה לך השבוע...</p>
+            <div class="row wrap">
+              <button class="white" id="heroCourses"></button>
+              <button id="heroPaste"></button>
+            </div>
+          </div>
+          <div class="illus" id="heroArt"></div>
+        </div>
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-head"><span class="ic zoom" data-ic="calendar"></span><h2>מה מחכה לי</h2><span class="chip" id="deadlineCount"></span></div>
+            <div id="deadlines"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="ic assign" data-ic="sparkles"></span><h2>פעולות מהירות</h2></div>
+            <div class="quick" id="quick"></div>
+          </div>
+          <div class="card full">
+            <div class="card-head"><span class="ic file" data-ic="book"></span><h2>הקורסים של הסמסטר</h2><button class="small ghost" id="allCourses">לכל הקורסים</button></div>
+            <div class="grid stagger" id="homeCourses"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Courses -->
+    <section class="view" id="view-courses">
+      <div class="page">
+        <div class="head">
+          <div class="grow"><h1>הקורסים שלי</h1><p>כל הקורסים שלך מה-Moodle. בוחרים קורס ומקבלים את כל השיעורים, המטלות וההקלטות שלו.</p></div>
+          <label class="toggle"><input type="checkbox" id="showAll"><span class="switch"></span>גם קורסים קודמים</label>
+          <button id="refreshCourses"><span data-ic="refresh"></span>רענן</button>
+        </div>
+        <div id="coursesState"></div>
+        <div class="grid stagger" id="courses"></div>
+      </div>
+    </section>
+
+    <!-- One course -->
+    <section class="view" id="view-course">
+      <div class="page wide">
+        <div class="course-hero" id="courseHero">
+          <svg class="bg" id="courseBand"></svg>
+          <button class="small back" id="backToCourses"><span data-ic="back"></span>הקורסים</button>
+          <h1 id="courseName" dir="auto"></h1>
+          <div class="sub">
+            <span class="lecturer"><span data-ic="user"></span>מרצה:<input id="lecturer" dir="auto" placeholder="מי המרצה?" autocomplete="off"></span>
+            <span class="chip" id="courseCount"></span>
+            <span class="chip" id="courseReady"></span>
+          </div>
+        </div>
+        <div class="course-actions">
+          <button class="primary" id="syncAll"><span data-ic="download"></span>הורד את כל הקורס</button>
+          <button class="soft" id="examPrepBtn"><span data-ic="brain"></span>המוח של המרצה</button>
+          <button id="openCourseFolder"><span data-ic="folder"></span>תיקיית הקורס</button>
+          <button id="reloadCourse" class="ghost"><span data-ic="refresh"></span>רענן</button>
+          <button id="toggleChat" class="ghost"><span data-ic="chat"></span>צ'אט</button>
+        </div>
+        <div class="tabs" id="courseTabs">
+          <button class="active" data-tab="lessons">שיעורים<span class="badge" id="tabLessons"></span></button>
+          <button data-tab="info">מידע על הקורס</button>
+          <button data-tab="exams">מבחנים<span class="badge" id="tabExams"></span></button>
+          <button data-tab="notes">המחברת שלי<span class="badge" id="tabNotes"></span></button>
+        </div>
+        <div class="status-bar" id="courseStatus" hidden></div>
+        <div class="course-body" id="courseBody">
+          <div>
+            <div class="tab-pane active" id="pane-lessons"><div id="lectures"></div></div>
+            <div class="tab-pane" id="pane-info"></div>
+            <div class="tab-pane" id="pane-exams"></div>
+            <div class="tab-pane" id="pane-notes"></div>
+          </div>
+          <aside class="chat" id="chat">
+            <div class="chat-head">
+              <div class="avatar" data-ic="sparkles"></div>
+              <div class="grow"><b>העוזר של הקורס</b><small id="chatSub">מכיר את כל החומר שהורדת</small></div>
+              <button class="small ghost" id="newChat" title="שיחה חדשה"><span data-ic="plus"></span>חדשה</button>
+            </div>
+            <div class="msgs" id="msgs"></div>
+            <div class="chat-input">
+              <textarea id="chatText" rows="1" placeholder="שאל על החומר, תרגיל או מבחן..."></textarea>
+              <button class="primary icon" id="chatSend" title="שלח"><span data-ic="send"></span></button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recordings -->
+    <section class="view" id="view-recordings">
+      <div class="page" style="max-width:820px">
+        <div class="head"><div class="grow"><h1>הקלטות Zoom</h1><p>מדביקים קישור להקלטה ומקבלים את הסרטון ואת התמלול בעברית.</p></div></div>
+        <section class="card pad-lg">
+          <div class="field-group">
+            <label class="field" for="url">קישור להקלטה</label>
+            <div class="row"><input type="text" class="ltr" id="url" placeholder="https://hit-ac-il.zoom.us/rec/play/…" spellcheck="false" autocomplete="off"><button id="paste"><span data-ic="clipboard"></span>הדבק</button></div>
+          </div>
+          <div class="field-group">
+            <label class="field" for="name">שם <span>(לא חובה. אם ריק, משתמשים בשם מהזום)</span></label>
+            <input type="text" id="name" dir="auto" placeholder="למשל: אינפי 2 - הרצאה 5" autocomplete="off">
+          </div>
+          <div class="form-actions">
+            <label class="toggle"><input type="checkbox" id="transcript" checked><span class="switch"></span>שמור גם תמלול (txt)</label>
+            <button class="primary big" id="go"><span data-ic="download"></span>הורד</button>
+          </div>
+        </section>
+        <h2 style="margin:26px 2px 12px">הורדות</h2>
+        <ul id="jobs"></ul>
+        <div id="jobsEmpty"></div>
+      </div>
+    </section>
+
+    <!-- Sites -->
+    <section class="view" id="view-sites">
+      <div class="site-bar">
+        <div class="site-tabs" id="siteTabs">
+          <button data-site="moodle" class="active">Moodle</button>
+          <button data-site="portal">פורטל מידע אישי</button>
+          <button data-site="cs24">CS24</button>
+        </div>
+        <button class="small icon ghost" id="siteBack" title="אחורה"><span data-ic="back"></span></button>
+        <button class="small icon ghost" id="siteForward" title="קדימה"><span data-ic="forward"></span></button>
+        <button class="small icon ghost" id="siteReload" title="רענן"><span data-ic="refresh"></span></button>
+        <span class="url ltr" id="siteUrl"></span>
+        <div class="grow"></div>
+        <span class="muted" style="font-size:12.5px">הורדות נשמרות ב:</span>
+        <select id="dlCourse"><option value="">תיקיית "הורדות"</option></select>
+        <select id="dlFolder"><option value="מבחנים">מבחנים</option><option value="מידע על הקורס">מידע על הקורס</option><option value="כללי">כללי</option></select>
+        <button class="small ghost" id="siteExternal" title="פתח בדפדפן"><span data-ic="external"></span></button>
+      </div>
+      <div id="siteHost"><div class="loading"><span class="spinner lg"></span></div></div>
+    </section>
+
+    <!-- Settings -->
+    <section class="view" id="view-settings">
+      <div class="page" style="max-width:880px">
+        <div class="head"><div class="grow"><h1>הגדרות</h1><p>החיבורים, התיקיות והמחברת.</p></div></div>
+        <section class="card pad-lg">
+          <div class="card-head"><h2>המנוע החכם</h2><span class="chip" id="aiChip"></span></div>
+          <div class="provider-cards" id="providers"></div>
+        </section>
+        <section class="card pad-lg" style="margin-top:16px">
+          <div class="setting">
+            <div class="grow"><b>Moodle, Zoom והפורטל</b><small>מתחברים פעם אחת עם המשתמש של HIT. ההתחברות נשמרת רק במחשב שלך.</small></div>
+            <span class="chip" id="moodleChip"></span>
+            <button id="moodleConnect">התחבר</button>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>תיקיית הקורסים</b><small>לכל קורס תיקייה, ובתוכה תיקייה לכל שיעור, מבחנים ומחברת.</small><span class="path" id="studyRoot">…</span></div>
+            <button id="changeStudy">שנה</button><button id="openStudy" class="ghost">פתח</button>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>תיקיית הקלטות</b><small>הקלטות שמורידים מהלשונית "הקלטות".</small><span class="path" id="recDir">…</span></div>
+            <button id="changeRec">שנה</button><button id="openRec" class="ghost">פתח</button>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>Notability</b><small>ב-Notability: הגדרות › גיבוי אוטומטי › Google Drive / OneDrive / Dropbox, בפורמט PDF. אחר כך בוחרים כאן את תיקיית הגיבוי שמסונכרנת למחשב.</small><span class="path" id="notabilityDir">לא נבחרה</span></div>
+            <button id="changeNotability">בחר תיקייה</button>
+          </div>
+          <div class="setting">
+            <div class="grow"><b>גרסה</b><small id="versionText"></small></div>
+            <button class="ghost" id="showWelcome">הצג שוב את מסך הפתיחה</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- First-run setup -->
+<div class="overlay" id="wizard" hidden>
+  <div class="wizard">
+    <div class="art-top" id="wizArt"></div>
+    <div class="content">
+      <div class="step active" data-step="0">
+        <h1>ברוך הבא ל-HIT Student</h1>
+        <p class="lead">כל הקורסים, ההקלטות והסיכומים שלך במקום אחד. בשתי דקות נחבר את כל מה שצריך.</p>
+        <div class="check-row"><div class="ci" data-ic="sparkles"></div><div class="grow"><b>מנוע חכם</b><small>Claude או Gemini, שמסכמים שיעורים ועוזרים בשיעורי בית</small></div></div>
+        <div class="check-row"><div class="ci" data-ic="book"></div><div class="grow"><b>Moodle של HIT</b><small>כל הקורסים, המטלות וההקלטות שלך</small></div></div>
+        <div class="check-row"><div class="ci" data-ic="folder"></div><div class="grow"><b>תיקייה במחשב</b><small>כל החומר מסודר לפי קורס ושיעור</small></div></div>
+      </div>
+      <div class="step" data-step="1">
+        <h1>בחר את המנוע החכם</h1>
+        <p class="lead">הוא קורא את החומר של הקורס, בונה דפי לימוד ועונה על שאלות. כל אחד מתחבר עם החשבון שלו.</p>
+        <div class="provider-cards" id="wizProviders"></div>
+      </div>
+      <div class="step" data-step="2">
+        <h1>התחברות ל-Moodle</h1>
+        <p class="lead">ייפתח דף ההתחברות של HIT. מתחברים פעם אחת, והאפליקציה זוכרת אותך, גם ל-Zoom ולפורטל.</p>
+        <div class="check-row" id="wizMoodle"><div class="ci" data-ic="key"></div><div class="grow"><b id="wizMoodleTitle">עוד לא מחובר</b><small id="wizMoodleSub">לחץ על "התחבר" כדי להמשיך</small></div><button class="primary" id="wizMoodleBtn">התחבר</button></div>
+      </div>
+      <div class="step" data-step="3">
+        <h1>איפה לשמור את החומר?</h1>
+        <p class="lead">לכל קורס תיוצר תיקייה, ובתוכה תיקייה לכל שיעור. אפשר לשנות את זה בכל רגע בהגדרות.</p>
+        <div class="check-row ok"><div class="ci" data-ic="folder"></div><div class="grow"><b>תיקיית הקורסים</b><small class="ltr" id="wizStudy"></small></div><button id="wizStudyBtn">שנה</button></div>
+        <div class="check-row" id="wizNotRow"><div class="ci" data-ic="note"></div><div class="grow"><b>מחברת Notability <span class="chip">לא חובה</span></b><small id="wizNot">אם Notability מגבה את המחברות לתיקייה במחשב, בחר אותה כאן</small></div><button id="wizNotBtn">בחר</button></div>
+      </div>
+      <div class="step" data-step="4">
+        <h1>הכל מוכן!</h1>
+        <p class="lead">עכשיו פשוט נכנסים לקורס, לוחצים "הורד את כל הקורס", ואחר כך "סכם" על כל שיעור. בהצלחה בסמסטר!</p>
+      </div>
+      <div class="foot">
+        <div class="steps" id="wizDots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        <div class="grow"></div>
+        <button class="ghost" id="wizSkip">דלג</button>
+        <button class="ghost" id="wizBack" hidden>חזרה</button>
+        <button class="primary big" id="wizNext">בוא נתחיל</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="art.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
