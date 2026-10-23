@@ -33,8 +33,20 @@ partial class HitStudent
     static string LocalNodeDir { get { return Path.Combine(ToolsDir, "node"); } }
     static string LocalNpmPrefix { get { return Path.Combine(ToolsDir, "npm"); } }
 
+    // node.exe that Gemini can run on: ours first, then a system install.
+    static string FindNode()
+    {
+        string own = Path.Combine(LocalNodeDir, "node.exe");
+        if (File.Exists(own)) return own;
+        string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"nodejs\node.exe");
+        return File.Exists(pf) ? pf : FindOnPath("node.exe");
+    }
+
+    // gemini.cmd is only usable together with Node.js: a leftover gemini.cmd without Node counts as "not installed",
+    // so setup installs Node (and Gemini into the app's own folder) instead of waiting forever.
     static string FindGemini()
     {
+        if (FindNode() == null) return null;
         string own = Path.Combine(LocalNpmPrefix, "gemini.cmd");
         if (File.Exists(own)) return own;
         string npm = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"npm\gemini.cmd");
@@ -43,16 +55,19 @@ partial class HitStudent
 
     static string FindNpm()
     {
+        if (FindNode() == null) return null;
         string own = Path.Combine(LocalNodeDir, "npm.cmd");
         if (File.Exists(own)) return own;
         string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"nodejs\npm.cmd");
         return File.Exists(pf) ? pf : FindOnPath("npm.cmd");
     }
 
-    // PATH for running npm / gemini: our own Node first.
+    // PATH for running npm / gemini: the folder of the Node we found first, then the app's own npm folder.
     static string NodePath()
     {
-        return LocalNodeDir + ";" + LocalNpmPrefix + ";" + Environment.GetEnvironmentVariable("PATH");
+        string node = FindNode();
+        string nodeDir = node != null ? Path.GetDirectoryName(node) : LocalNodeDir;
+        return nodeDir + ";" + LocalNpmPrefix + ";" + Environment.GetEnvironmentVariable("PATH");
     }
 
     // Downloads the current Node.js LTS (zip) from nodejs.org, checks it against the published SHA-256 list, and unpacks it.
@@ -176,7 +191,12 @@ partial class HitStudent
         catch (Exception ex) { Toast(ex.Message, true); }
         setupState = "";
         await SendAiStatus();
+        // "Sign in with Google" was pressed before Gemini was installed: carry on with the sign-in now.
+        if (loginAfterSetup && FindGemini() != null) { loginAfterSetup = false; LoginGemini(); }
+        loginAfterSetup = false;
     }
+
+    bool loginAfterSetup;
 
     // Which conversation a chat message belongs to: "course", "lesson:N" or "exam". (Per-scope sessions: work in progress.)
     static string ChatScope(Dictionary<string, object> m)
@@ -236,7 +256,7 @@ partial class HitStudent
     async void LoginGemini()
     {
         if (setupState.Length > 0) return;
-        if (FindGemini() == null) { SetupGemini(); return; }
+        if (FindGemini() == null) { loginAfterSetup = true; SetupGemini(); return; }
         setupState = "login-gemini";
         await SendAiStatus();
         try

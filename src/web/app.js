@@ -403,11 +403,14 @@ function openCourse(c) {
   $('lecturer').value = ''; $('lecturer').placeholder = 'מי המרצה?';
   $('courseCount').textContent = 'טוען...'; $('courseReady').hidden = true;
   $('courseStatus').hidden = true;
-  setTab('lessons');
   $('lectures').innerHTML = '';
   for (let i = 0; i < 6; i++) $('lectures').append(h('<div class="skeleton" style="height:70px;border-radius:16px;margin-bottom:10px"></div>'));
   S.chatScope = 'course'; S.chatLogs = {}; S.pendingChat = null;
   resetChat();
+  // A course that was never set up goes straight to the questions - not the full course screen.
+  S.local = S.local || { exists: false };
+  applySetupMode();
+  if (!inSetup()) setTab('lessons');
   show('course');
   send({ type: 'openCourse', id: c.id, course: c.name });
 }
@@ -508,6 +511,34 @@ const SETUP_Q = [
     }
   },
   {
+    key: 'recs',
+    ask: () => 'יש לך קישורים להקלטות של השיעורים?',
+    hint: () => 'הדבק את הקישור ל-Zoom של כל שיעור ובחר לאיזה שיעור הוא שייך. אני אוריד את ההקלטה ואת התמלול לתיקייה של השיעור.',
+    body: (done) => {
+      const box = h('<div style="display:grid;gap:8px"></div>');
+      const lessons = S.sections.filter(s => s.num > 0 && s.items.length);
+      const added = h('<div class="muted" style="font-size:12.5px"></div>');
+      const row = h(`<div class="row wrap"><select style="width:auto;min-width:170px">${lessons.map(s => `<option value="${s.num}">שיעור ${s.num} · ${esc(s.title).slice(0, 40)}</option>`).join('')}</select>
+        <input type="text" class="ltr" placeholder="https://...zoom.us/rec/..." style="max-width:340px"><button class="soft">הוסף</button></div>`);
+      let count = 0;
+      const add = () => {
+        const url = row.querySelector('input').value.trim(); if (!url) return;
+        send({ type: 'addRecording', course: S.course.name, num: +row.querySelector('select').value, url });
+        row.querySelector('input').value = ''; count++;
+        added.textContent = `${count} הקלטות בהורדה. אפשר להוסיף עוד.`;
+        const sel = row.querySelector('select'); if (sel.selectedIndex < sel.options.length - 1) sel.selectedIndex++;
+      };
+      row.querySelector('button').onclick = add;
+      row.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') add(); };
+      const next = h('<div class="row wrap"></div>');
+      const done1 = h('<button class="primary">סיימתי</button>'); done1.onclick = () => done(count ? `${count} הקלטות` : 'בלי הקלטות');
+      const none = h('<button class="ghost">אין לי הקלטות</button>'); none.onclick = () => done('אין');
+      next.append(done1, none);
+      box.append(row, added, next);
+      return box;
+    }
+  },
+  {
     key: 'exams',
     ask: () => 'יש לך מבחנים משנים קודמות, עדיף עם פתרונות?',
     hint: () => `הם הכי חשובים כדי להבין איך המרצה בוחן.${(S.local && S.local.exams) ? ` יש כבר ${S.local.exams} קבצי מבחנים.` : ''} ב-CS24 יש מבחנים של רוב הקורסים: כל קובץ שתוריד שם נשמר אצלי לבד.`,
@@ -548,6 +579,13 @@ const SETUP_Q = [
 
 function renderSetup() {
   const p = $('pane-setup'); p.innerHTML = '';
+  // Until the course's lessons arrive from Moodle, just a short "getting ready" card.
+  if (!S.sections.length) {
+    p.append(h(`<div class="card pad-lg setup-step" style="text-align:center"><div style="width:120px;margin:0 auto 10px">${ART.mascot('wave').replace('<svg', '<svg style="width:120px;height:120px"')}</div>
+      <h2>רגע, אני מסתכל על הקורס ב-Moodle...</h2><p class="muted" style="margin:8px 0 0">עוד כמה שניות ואשאל אותך כמה שאלות קצרות.</p>
+      <div class="row" style="justify-content:center;margin-top:14px"><span class="spinner"></span></div></div>`));
+    return;
+  }
   const ans = setupAnswers();
   const current = SETUP_Q.find(q => !(q.key in ans));
   const answered = SETUP_Q.filter(q => q.key in ans);
@@ -614,6 +652,22 @@ function renderRecs() {
       <button class="primary">פתח את הקלטות הזום</button></div></div>`);
     c.querySelector('button').onclick = () => { $('dlCourse').value = S.course.name; $('dlFolder').value = 'הקלטה'; syncDownloadTarget(); openSite('moodle', zoomTool.url); };
     p.append(c);
+  }
+  // Paste a lesson's Zoom link: the recording and its transcript download into that lesson's folder.
+  const lessons = S.sections.filter(s => s.num > 0 && s.items.length);
+  if (lessons.length) {
+    const addCard = h(`<div class="card pad-lg" style="margin-bottom:14px"><h2>הוסף הקלטה לפי קישור</h2>
+      <p class="muted" style="margin:6px 0 12px">יש לך קישור Zoom של שיעור? בחר את השיעור, הדבק את הקישור, ואני אוריד את ההקלטה והתמלול.</p>
+      <div class="row wrap"><select style="width:auto;min-width:170px">${lessons.map(s => `<option value="${s.num}">שיעור ${s.num} · ${esc(s.title).slice(0, 40)}</option>`).join('')}</select>
+      <input type="text" class="ltr" placeholder="https://...zoom.us/rec/..." style="max-width:340px"><button class="primary">הורד</button></div></div>`);
+    const add = () => {
+      const url = addCard.querySelector('input').value.trim(); if (!url) return;
+      send({ type: 'addRecording', course: S.course.name, num: +addCard.querySelector('select').value, url });
+      addCard.querySelector('input').value = '';
+    };
+    addCard.querySelector('button').onclick = add;
+    addCard.querySelector('input').onkeydown = (e) => { if (e.key === 'Enter') add(); };
+    p.append(addCard);
   }
   // Only recordings that really exist: the ones already downloaded, and the ones downloading now.
   const have = S.sections.filter(s => s.local && s.local.videos);
