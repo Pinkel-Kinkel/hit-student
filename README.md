@@ -1,8 +1,8 @@
 <div dir="rtl" align="center">
 
-<img src="assets/icon-512.png" width="96" alt="HIT Student">
+<img src="assets/icon-512.png" width="96" alt="SummarIT">
 
-# HIT Student
+# SummarIT
 
 **כל הלימודים ב-HIT באפליקציה אחת.** הקורסים מה-Moodle, ההקלטות מה-Zoom, דפי לימוד שנבנים לבד, וצ'אט שמכיר את כל החומר של הקורס.
 

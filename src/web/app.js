@@ -169,6 +169,7 @@ function connectMoodle() { S.moodle = 'connecting'; renderStatus(); send({ type:
 
 function renderBanners() {
   const b = $('banners'); b.innerHTML = '';
+  if (S.prep) b.append(bannerEl(`מכין את הקורסים שלך ברקע · ${S.prep.done + 1} מתוך ${S.prep.total}: ${esc(S.prep.course || '')}`, 'לקורסים', () => show('courses')));
   if (S.updateReady) b.append(bannerEl(`גרסה ${esc(S.updateReady)} מוכנה`, 'הפעל מחדש עכשיו', () => send({ type: 'restartForUpdate' })));
   else if (S.update && S.update.progress) b.append(bannerEl(esc(S.update.progress), S.update.error ? 'לדף ההורדה' : '...', () => S.update.error && send({ type: 'openLink', url: S.update.url }), S.update.error ? 'warn' : ''));
   else if (S.update) b.append(bannerEl(`גרסה חדשה זמינה: ${esc(S.update.version)}`, S.update.canAuto ? 'עדכן עכשיו' : 'להורדה', () => S.update.canAuto ? send({ type: 'installUpdate' }) : send({ type: 'openLink', url: S.update.url })));
@@ -882,12 +883,13 @@ function renderSettings() {
   const st = S.settings;
   $('studyRoot').textContent = st.studyRoot; $('recDir').textContent = st.recordingsDir;
   $('notabilityDir').textContent = st.notabilityDir || 'לא נבחרה';
-  $('versionText').textContent = 'HIT Student ' + (st.version || '');
+  $('versionText').textContent = 'SummarIT ' + (st.version || '');
   $('wizStudy').textContent = st.studyRoot;
   $('wizNot').textContent = st.notabilityDir || 'אם Notability מגבה את המחברות לתיקייה במחשב, בחר אותה כאן';
   $('wizNotRow').classList.toggle('ok', !!st.notabilityDir);
+  $('optFallback').checked = st.autoFallback !== false;
   $('optSync').checked = st.autoSync !== false; $('optRec').checked = st.autoRecordings !== false; $('optUpdate').checked = st.autoUpdate !== false;
-  $('versionText').textContent = `HIT Student ${st.version || ''} · מתעדכנת לבד כשיוצאת גרסה חדשה`;
+  $('versionText').textContent = `SummarIT ${st.version || ''} · מתעדכנת לבד כשיוצאת גרסה חדשה`;
   applyTheme(st.theme || 'system');
 }
 $('changeStudy').onclick = $('wizStudyBtn').onclick = () => send({ type: 'chooseFolder', which: 'study' });
@@ -901,13 +903,30 @@ $('themeToggle').onclick = () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   applyTheme(next); send({ type: 'setOption', name: 'theme', value: next });
 };
-[['optSync', 'autoSync'], ['optRec', 'autoRecordings'], ['optUpdate', 'autoUpdate']].forEach(([id, name]) =>
+[['optSync', 'autoSync'], ['optRec', 'autoRecordings'], ['optUpdate', 'autoUpdate'], ['optFallback', 'autoFallback']].forEach(([id, name]) =>
   $(id).onchange = () => send({ type: 'setOption', name, value: $(id).checked }));
 
 // ---------- First-run setup ----------
 let wizStep = 0, wizPoll = null;
-const wizArt = ['welcome', 'ai', 'campus', 'folders', 'done'];
-const wizNext = ['בוא נתחיל', 'המשך', 'המשך', 'המשך', 'לאפליקציה'];
+// Order: welcome -> Moodle -> pick this semester's courses -> AI -> folders -> done (downloads start in the background).
+const wizArt = ['welcome', 'campus', 'folders', 'ai', 'folders', 'done'];
+const wizNext = ['בוא נתחיל', 'המשך', 'המשך', 'המשך', 'המשך', 'לאפליקציה'];
+const LAST = wizNext.length - 1;
+function renderWizardCourses() {
+  const box = $('wizCourses'); if (!box) return;
+  box.innerHTML = '';
+  if (S.moodle !== 'ready') { box.append(h('<div class="check-row"><div class="ci" data-ic="alert"></div><div class="grow"><b>קודם צריך להתחבר ל-Moodle</b><small>חזור שלב אחד אחורה ולחץ "התחבר".</small></div></div>')); return; }
+  if (!S.courses) { box.append(h('<div class="row" style="gap:10px"><span class="spinner"></span>מחפש את הקורסים שלך...</div>')); return; }
+  const cur = S.courses.filter(c => c.current);
+  if (!cur.length) { box.append(h('<div class="muted">לא מצאתי קורסים פעילים ב-Moodle. אפשר להמשיך, ולבחור קורסים אחר כך.</div>')); return; }
+  S.wizPick = S.wizPick || new Set(cur.map(c => c.id));
+  cur.forEach(c => {
+    const row = h(`<label class="check-row" style="cursor:pointer"><input type="checkbox" style="width:18px;height:18px" ${S.wizPick.has(c.id) ? 'checked' : ''}><div class="grow"><b dir="auto"></b><small dir="auto"></small></div></label>`);
+    row.querySelector('b').textContent = c.name; row.querySelector('small').textContent = c.category || '';
+    row.querySelector('input').onchange = (e) => { e.target.checked ? S.wizPick.add(c.id) : S.wizPick.delete(c.id); };
+    box.append(row);
+  });
+}
 function openWizard(step) { $('wizard').hidden = false; goStep(step || 0); }
 function closeWizard() {
   $('wizard').hidden = true; clearInterval(wizPoll); wizPoll = null;
@@ -919,16 +938,23 @@ function goStep(n) {
   document.querySelectorAll('#wizDots i').forEach((d, i) => d.classList.toggle('on', i === n));
   $('wizArt').innerHTML = ART[wizArt[n]]();
   $('wizNext').textContent = wizNext[n];
-  $('wizBack').hidden = n === 0 || n === 4;
-  $('wizSkip').hidden = n === 4;
+  $('wizBack').hidden = n === 0 || n === LAST;
+  $('wizSkip').hidden = n === LAST;
   clearInterval(wizPoll);
-  if (n === 1 || n === 2) wizPoll = setInterval(() => send({ type: 'checkStatus' }), 5000);
-  if (n === 4) confetti();
-  renderProviders(); renderWizardMoodle();
+  if (n === 1 || n === 3) wizPoll = setInterval(() => send({ type: 'checkStatus' }), 5000);
+  if (n === 2 && S.moodle === 'ready' && !S.courses) send({ type: 'loadCourses' });
+  if (n === LAST) confetti();
+  renderProviders(); renderWizardMoodle(); renderWizardCourses();
 }
 $('wizNext').onclick = () => {
-  if (wizStep === 1 && !(S.ai && S.ai.ready)) toast('אפשר לחבר את המנוע החכם גם אחר כך, מהסטטוס בצד', { ms: 3500 });
-  if (wizStep >= 4) { closeWizard(); show('home'); return; }
+  if (wizStep === 1 && S.moodle !== 'ready') { toast('קודם מתחברים ל-Moodle, ואז ממשיכים'); return; }
+  if (wizStep === 3 && !(S.ai && S.ai.ready)) toast('אפשר לחבר את המנוע החכם גם אחר כך, מהסטטוס בצד', { ms: 3500 });
+  if (wizStep >= LAST) {
+    // Start downloading the chosen courses in the background.
+    const picked = (S.courses || []).filter(c => S.wizPick && S.wizPick.has(c.id)).map(c => ({ id: c.id, name: c.name }));
+    if (picked.length) send({ type: 'prepareCourses', courses: picked });
+    closeWizard(); show('home'); return;
+  }
   goStep(wizStep + 1);
 };
 $('wizBack').onclick = () => goStep(Math.max(0, wizStep - 1));
@@ -957,6 +983,7 @@ function onMessage(m) {
       S.moodle = m.state; renderStatus();
       if (m.state === 'error' && m.message) toast(m.message, { error: true });
       if (m.state === 'ready' && !S.courses) send({ type: 'loadCourses' });
+      if (!$('wizard').hidden) renderWizardCourses();
       if (m.state === 'login' && S.view === 'courses' && !S.courses) { $('courses').innerHTML = ''; $('coursesState').innerHTML = ''; $('coursesState').append(h(`<div class="empty">${ART.campus().replace('<svg', '<svg class="art" style="width:220px;height:130px"')}<b>צריך להתחבר ל-Moodle</b>מתחברים פעם אחת עם המשתמש של HIT.<div class="row"><button class="primary" id="cm">התחבר</button></div></div>`)); $('cm').onclick = connectMoodle; }
       if (S.view === 'home') renderHome();
       break;
@@ -964,6 +991,7 @@ function onMessage(m) {
     case 'courses':
       S.courses = m.data || []; renderCourses(); fillDownloadCourses();
       if (S.view === 'home') renderHome();
+      if (!$('wizard').hidden) renderWizardCourses();
       break;
     case 'course': {
       if (!S.course || S.course.id !== m.id) break;
@@ -1074,6 +1102,10 @@ function onMessage(m) {
     case 'notabilitySubjects': if (S.course) send({ type: 'openCourse', id: S.course.id, course: S.course.name }); break;
     case 'siteNav': $('siteUrl').textContent = m.url || ''; $('siteBack').disabled = !m.canBack; $('siteForward').disabled = !m.canForward; break;
     case 'timetable': S.timetable = m.data; renderTimetable(); break;
+    case 'prepStatus':
+      S.prep = m.busy ? m : null; renderBanners();
+      if (!m.busy && m.total) toast(`הקורסים שבחרת מוכנים במחשב (${m.total})`);
+      break;
     case 'timetableStatus':
       $('ttStatus').innerHTML = m.busy ? '<span class="spinner"></span> קורא את המערכת...' : '';
       if (!m.busy && m.text) toast(m.text, { error: m.error });
@@ -1104,7 +1136,7 @@ function start() {
   if (!host) return;
   host.addEventListener('message', e => onMessage(e.data));
   icons();
-  $('splashLogo').innerHTML = IC.grad; $('navLogo').innerHTML = IC.grad;
+  $('splashLogo').innerHTML = ART.mascot(); $('navLogo').innerHTML = ART.mascot();
   renderHome(); renderTimetable(); refreshJobs(); renderStatus();
   send({ type: 'ready' });
 }

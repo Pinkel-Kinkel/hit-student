@@ -28,16 +28,67 @@ partial class HitStudent
         return File.Exists(npm) ? npm : FindOnPath("claude.exe", "claude.cmd");
     }
 
+    // Gemini needs Node.js. The app keeps its own copy under %LOCALAPPDATA%\SummarIT, so no admin rights are needed.
+    static string ToolsDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SummarIT"); } }
+    static string LocalNodeDir { get { return Path.Combine(ToolsDir, "node"); } }
+    static string LocalNpmPrefix { get { return Path.Combine(ToolsDir, "npm"); } }
+
     static string FindGemini()
     {
+        string own = Path.Combine(LocalNpmPrefix, "gemini.cmd");
+        if (File.Exists(own)) return own;
         string npm = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"npm\gemini.cmd");
         return File.Exists(npm) ? npm : FindOnPath("gemini.cmd", "gemini.exe");
     }
 
     static string FindNpm()
     {
+        string own = Path.Combine(LocalNodeDir, "npm.cmd");
+        if (File.Exists(own)) return own;
         string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"nodejs\npm.cmd");
         return File.Exists(pf) ? pf : FindOnPath("npm.cmd");
+    }
+
+    // PATH for running npm / gemini: our own Node first.
+    static string NodePath()
+    {
+        return LocalNodeDir + ";" + LocalNpmPrefix + ";" + Environment.GetEnvironmentVariable("PATH");
+    }
+
+    // Downloads the current Node.js LTS (zip) from nodejs.org, checks it against the published SHA-256 list, and unpacks it.
+    async Task InstallPortableNode()
+    {
+        using (var http = new System.Net.Http.HttpClient())
+        {
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SummarIT/" + Version);
+            http.Timeout = TimeSpan.FromMinutes(10);
+            var index = json.Deserialize<List<Dictionary<string, object>>>(await http.GetStringAsync("https://nodejs.org/dist/index.json"));
+            var lts = index.First(v => v["lts"] is string && Str(v, "version").Length > 0);
+            string ver = Str(lts, "version");
+            string name = "node-" + ver + "-win-x64";
+            string sums = await http.GetStringAsync("https://nodejs.org/dist/" + ver + "/SHASUMS256.txt");
+            Match sm = Regex.Match(sums, @"([0-9a-f]{64})\s+" + Regex.Escape(name + ".zip"));
+            if (!sm.Success) throw new Exception("Node.js checksum not found");
+            Directory.CreateDirectory(ToolsDir);
+            string zip = Path.Combine(ToolsDir, name + ".zip");
+            using (var resp = await http.GetAsync("https://nodejs.org/dist/" + ver + "/" + name + ".zip", System.Net.Http.HttpCompletionOption.ResponseHeadersRead))
+            {
+                resp.EnsureSuccessStatusCode();
+                using (var fs = File.Create(zip)) await resp.Content.CopyToAsync(fs);
+            }
+            string actual;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            using (var fs = File.OpenRead(zip))
+                actual = BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
+            if (actual != sm.Groups[1].Value) { File.Delete(zip); throw new Exception("Node.js download failed verification"); }
+            string tmp = Path.Combine(ToolsDir, "node-tmp");
+            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+            System.IO.Compression.ZipFile.ExtractToDirectory(zip, tmp);
+            if (Directory.Exists(LocalNodeDir)) Directory.Delete(LocalNodeDir, true);
+            Directory.Move(Path.Combine(tmp, name), LocalNodeDir);
+            Directory.Delete(tmp, true);
+            File.Delete(zip);
+        }
     }
 
     async Task<object> AiStatus()
@@ -111,13 +162,14 @@ partial class HitStudent
                 {
                     setupState = "installing-node";
                     await SendAiStatus();
-                    await Exec("winget", "install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements", null, 900000);
+                    await InstallPortableNode();
                     if (FindNpm() == null) throw new Exception("ההתקנה של Node.js נכשלה");
                 }
                 setupState = "installing-gemini";
                 await SendAiStatus();
-                var r = await Exec(FindNpm(), "install -g @google/gemini-cli", null, 900000,
-                    new Dictionary<string, string> { { "PATH", Path.GetDirectoryName(FindNpm()) + ";" + Environment.GetEnvironmentVariable("PATH") } });
+                Directory.CreateDirectory(LocalNpmPrefix);
+                var r = await Exec(FindNpm(), "install -g --prefix " + Q(LocalNpmPrefix) + " @google/gemini-cli", null, 900000,
+                    new Dictionary<string, string> { { "PATH", NodePath() } });
                 if (FindGemini() == null) throw new Exception("ההתקנה של Gemini נכשלה. " + Trunc(r.Item2, 200));
             }
         }
@@ -194,7 +246,7 @@ partial class HitStudent
             if (!File.Exists(settingsFile))
                 File.WriteAllText(settingsFile, "{\n  \"security\": { \"auth\": { \"selectedType\": \"oauth-personal\" } }\n}\n", new UTF8Encoding(false));
             var r = await Exec(FindGemini(), "-p \"Reply with OK\"", Home, 600000,
-                new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" } });
+                new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" }, { "PATH", NodePath() } });
             if (!GeminiGoogleSignedIn())
             {
                 Match url = Regex.Match(r.Item2, @"https://accounts\.google\.com/\S+");
@@ -271,6 +323,13 @@ partial class HitStudent
             bool otherReady = provider == "claude"
                 ? FindGemini() != null && (Str(settings, "geminiKey").Length > 0 || GeminiGoogleSignedIn())
                 : FindClaude() != null;
+            // With both connected and the "switch automatically" setting on, just carry on with the other one.
+            if (otherReady && Option("autoFallback"))
+            {
+                Toast((provider == "claude" ? "המכסה של Claude נגמרה לעכשיו - ממשיך עם Gemini" : "המכסה של Gemini נגמרה לעכשיו - ממשיך עם Claude"), false);
+                var second = provider == "claude" ? await RunGemini(key, cwd, prompt, system, onEvent) : await RunClaude(key, cwd, prompt, null, system, onEvent);
+                if (!(second.Error && IsUsageLimit(second.Text))) return second;
+            }
             Send(new { type = "aiLimit", provider = provider, otherReady = otherReady, reset = LimitResetText(result.Text) });
             result.Text = (provider == "claude" ? "Claude" : "Gemini") + " הגיע למגבלת השימוש לעכשיו. אפשר לעבור ל" + (provider == "claude" ? "-Gemini" : "-Claude") + " ולהמשיך.";
             result.Limit = true;
@@ -335,6 +394,7 @@ partial class HitStudent
         var genv = apiKey.Length > 0
             ? new Dictionary<string, string> { { "GEMINI_API_KEY", apiKey }, { "GEMINI_DEFAULT_AUTH_TYPE", "gemini-api-key" } }
             : new Dictionary<string, string> { { "GEMINI_DEFAULT_AUTH_TYPE", "oauth-personal" } };
+        genv["PATH"] = NodePath();   // gemini.cmd runs on the app's own Node.js
         var buffer = new StringBuilder();
         return RunStream(key, gemini, args, cwd, full, genv, line =>
         {

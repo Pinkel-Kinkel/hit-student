@@ -489,8 +489,17 @@ html[data-theme=dark] .provider .pl.claude { background: #3b2216; color: #fdba74
 .splash { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: var(--bg); transition: opacity .5s ease, visibility .5s; }
 .splash.hide { opacity: 0; visibility: hidden; }
 .splash .box { text-align: center; }
-.splash .logo { width: 76px; height: 76px; border-radius: 22px; margin: 0 auto 18px; animation: breathe 2s ease-in-out infinite; }
-.splash .logo svg { width: 40px; height: 40px; }
+.splash .logo { width: 150px; height: 150px; border-radius: 40px; margin: 0 auto 18px; background: none; box-shadow: 0 18px 50px rgba(99, 102, 241, .4); animation: none; }
+.splash .logo svg { width: 150px; height: 150px; }
+/* Mascot: the thumb swings up on launch, and every few seconds the smile gleams. */
+.mascot-arm { transform-box: fill-box; transform-origin: 50% 100%; }
+.splash .mascot-arm, .mascot.wave .mascot-arm { animation: thumbsUp 1.1s cubic-bezier(.3, 1.6, .5, 1) .25s both; }
+@keyframes thumbsUp { 0% { transform: rotate(-70deg) translateY(16px); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
+.mascot-gleam { transform-box: fill-box; transform-origin: center; animation: gleam 4.5s ease-in-out 1.4s infinite; opacity: 0; }
+@keyframes gleam { 0%, 84%, 100% { opacity: 0; transform: scale(.2) rotate(0); } 90% { opacity: 1; transform: scale(1.3) rotate(45deg); } 95% { opacity: .9; transform: scale(.9) rotate(80deg); } }
+.brand .logo { background: none; box-shadow: 0 6px 16px rgba(99, 102, 241, .3); overflow: hidden; }
+.brand .logo svg { width: 40px; height: 40px; }
+.brand:hover .mascot-arm { animation: thumbsUp .9s cubic-bezier(.3, 1.6, .5, 1) both; }
 @keyframes breathe { 50% { transform: scale(1.06) rotate(-3deg); box-shadow: 0 12px 34px rgba(99, 102, 241, .5); } }
 .splash b { font: 700 20px "Segoe UI Variable Display", "Segoe UI"; display: block; }
 .splash small { color: var(--muted); display: block; margin-top: 6px; min-height: 20px; transition: opacity .3s; }

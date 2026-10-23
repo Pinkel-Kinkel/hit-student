@@ -515,6 +515,31 @@ return out;";
 
     async void SyncCourse(string course, ArrayList sections) { await SyncCourseAsync(course, sections); }
 
+    // First run: download every course the student picked, one after another, in the background.
+    async void PrepareCourses(ArrayList courses)
+    {
+        if (courses == null) return;
+        var list = courses.Cast<Dictionary<string, object>>().ToList();
+        for (int i = 0; i < list.Count; i++)
+        {
+            string name = Str(list[i], "name");
+            int id = Int(list[i], "id");
+            Send(new { type = "prepStatus", busy = true, done = i, total = list.Count, course = name });
+            try
+            {
+                string v = await WithMoodle(() => EvalAsync(moodle, SectionsJs.Replace("COURSE_ID", id.ToString()), 120000));
+                var meta = LoadMeta(name);
+                meta["courseId"] = id;
+                SaveMeta(name, meta);
+                await SyncCourseAsync(name, json.Deserialize<ArrayList>(v));
+            }
+            catch (Exception ex) { Toast(name + ": " + ex.Message, true); }
+        }
+        Send(new { type = "prepStatus", busy = false, done = list.Count, total = list.Count });
+        if (lastCourses != null) foreach (var c in lastCourses) c["local"] = CourseLocal(Str(c, "name"));
+        if (lastCourses != null) Send(new { type = "courses", data = lastCourses });
+    }
+
     // Downloads every lesson of the course. Files already on disk are skipped, so this is cheap to repeat.
     async Task SyncCourseAsync(string course, ArrayList sections)
     {

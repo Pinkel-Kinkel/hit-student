@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.3.0";
+    public const string Version = "2.4.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -65,7 +65,7 @@ partial class HitStudent : Form
         int i = Array.IndexOf(args, "--selftest");
         selfTestOut = selfTest && i + 1 < args.Length ? args[i + 1] : Path.Combine(AppDir, "selftest.json");
 
-        Text = "HIT Student";
+        Text = "SummarIT";
         ClientSize = new Size(1240, 820);
         MinimumSize = new Size(820, 620);
         StartPosition = FormStartPosition.CenterScreen;
@@ -211,7 +211,7 @@ partial class HitStudent : Form
             settings["recordingsDir"] = dir.Length > 0 ? dir : (hasD ? @"D:\HIT\Zoom Recordings" : Path.Combine(docs, "HIT Recordings"));
         }
         if (Str(settings, "aiProvider").Length == 0) settings["aiProvider"] = "claude";
-        foreach (string opt in new[] { "autoSync", "autoRecordings", "autoUpdate" })
+        foreach (string opt in new[] { "autoSync", "autoRecordings", "autoUpdate", "autoFallback" })
             if (!settings.ContainsKey(opt)) settings[opt] = true;
     }
 
@@ -280,7 +280,7 @@ partial class HitStudent : Form
             type = "settings", studyRoot = StudyRoot, recordingsDir = RecordingsDir, notabilityDir = NotabilityDir,
             aiProvider = Provider, hasGeminiKey = Str(settings, "geminiKey").Length > 0,
             onboarded = Bool(settings, "onboarded"), userName = Str(settings, "userName"), version = Version,
-            autoSync = Option("autoSync"), autoRecordings = Option("autoRecordings"), autoUpdate = Option("autoUpdate"),
+            autoSync = Option("autoSync"), autoRecordings = Option("autoRecordings"), autoUpdate = Option("autoUpdate"), autoFallback = Option("autoFallback"),
             theme = Str(settings, "theme").Length > 0 ? Str(settings, "theme") : "system", systemLight = SystemUsesLightTheme()
         });
     }
@@ -326,7 +326,7 @@ partial class HitStudent : Form
             case "checkStatus": var ignored2 = PollStatus(true); break;
             case "setOption":
                 string opt = Str(m, "name");
-                if (opt == "autoSync" || opt == "autoRecordings" || opt == "autoUpdate") { settings[opt] = Bool(m, "value"); SaveSettings(); SendSettings(); }
+                if (opt == "autoSync" || opt == "autoRecordings" || opt == "autoUpdate" || opt == "autoFallback") { settings[opt] = Bool(m, "value"); SaveSettings(); SendSettings(); }
                 if (opt == "theme")
                 {
                     string t = Str(m, "value");
@@ -437,6 +437,7 @@ partial class HitStudent : Form
             case "linkNotability": LinkNotability(course, Str(m, "folder")); break;
             case "openNotability": OpenNotability(); break;
             case "importTimetable": ImportTimetable(); break;
+            case "prepareCourses": PrepareCourses(m["courses"] as System.Collections.ArrayList); break;
 
             // Sites inside the app
             case "showSite": ShowSite(m); break;

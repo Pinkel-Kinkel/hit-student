@@ -43,6 +43,36 @@ const IC = {
 };
 
 const ART = {
+  // SummarIT's own mascot: a student with dark hair, glasses, a hoodie and a graduation cap, giving a thumbs up.
+  // The arm swings up (.mascot-arm) and a small gleam flashes on the smile (.mascot-gleam).
+  mascot: (cls = '') => `<svg class="mascot ${cls}" viewBox="0 0 200 200" fill="none">
+    <defs>
+      <linearGradient id="msBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#ec4899"/></linearGradient>
+      <linearGradient id="msHood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#3730a3"/></linearGradient>
+      <clipPath id="msClip"><rect x="6" y="6" width="188" height="188" rx="46"/></clipPath>
+    </defs>
+    <rect x="6" y="6" width="188" height="188" rx="46" fill="url(#msBg)"/>
+    <g clip-path="url(#msClip)">
+    <circle cx="100" cy="112" r="70" fill="rgba(255,255,255,.12)"/>
+    <path d="M44 200c2-40 26-62 56-62s54 22 56 62z" fill="url(#msHood)"/>
+    <path d="M86 140l14 16 14-16" stroke="#c7d2fe" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="100" y="186" text-anchor="middle" font-family="Segoe UI, sans-serif" font-weight="800" font-size="17" fill="#e0e7ff">IT</text>
+    <circle cx="100" cy="98" r="36" fill="#f6c9a8"/>
+    <path d="M64 92c0-24 16-38 36-38s36 14 36 38c-6-10-16-16-36-16s-30 6-36 16z" fill="#2b2140"/>
+    <circle cx="64" cy="100" r="6" fill="#efb893"/><circle cx="136" cy="100" r="6" fill="#efb893"/>
+    <g stroke="#1e1b4b" stroke-width="3.5"><rect x="74" y="90" width="22" height="16" rx="7" fill="rgba(255,255,255,.35)"/><rect x="104" y="90" width="22" height="16" rx="7" fill="rgba(255,255,255,.35)"/><path d="M96 97h8"/></g>
+    <circle cx="85" cy="98" r="3" fill="#1e1b4b"/><path d="M110 99c3-3 8-3 11 0" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round"/>
+    <path d="M84 114c8 10 24 10 32 0" fill="#fff" stroke="#1e1b4b" stroke-width="3" stroke-linejoin="round"/>
+    <g class="mascot-gleam"><path d="M118 108l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#fff"/></g>
+    <path d="M100 46l46 18-46 18-46-18z" fill="#1e1b4b"/><path d="M76 72v10c14 8 34 8 48 0V72l-24 10z" fill="#312e81"/>
+    <path d="M146 64v22" stroke="#fbbf24" stroke-width="3"/><circle cx="146" cy="89" r="4.5" fill="#fbbf24"/>
+    <g class="mascot-arm">
+      <path d="M52 168c-6-16-6-30 0-44" stroke="#4338ca" stroke-width="18" stroke-linecap="round"/>
+      <g transform="translate(52 118)"><rect x="-13" y="-6" width="26" height="22" rx="8" fill="#f6c9a8"/><rect x="-5" y="-24" width="10" height="22" rx="5" fill="#f6c9a8"/><path d="M-13 3h26M-13 9h26" stroke="#e3a986" stroke-width="2"/></g>
+    </g>
+    </g>
+  </svg>`,
+
   // Desk with a laptop playing a lecture, books, a mug and a plant.
   hero: () => `<svg viewBox="0 0 300 200" fill="none">
     <ellipse cx="150" cy="186" rx="128" ry="9" fill="rgba(0,0,0,.14)"/>
