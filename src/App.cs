@@ -626,7 +626,12 @@ partial class HitStudent : Form
 
     static void CleanUpOldFiles()
     {
-        try { foreach (string f in Directory.GetFiles(AppDir, "*.old", SearchOption.AllDirectories)) try { File.Delete(f); } catch { } }
+        // Only the app's own files; browser-data has Chromium's own "LOG.old" files.
+        try
+        {
+            foreach (string f in Directory.GetFiles(AppDir, "*.old", SearchOption.AllDirectories))
+                if (!IsInside(f, DataDir)) try { File.Delete(f); } catch { }
+        }
         catch { }
     }
 
