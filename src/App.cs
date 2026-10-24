@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.7.0";
+    public const string Version = "2.8.0";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -65,7 +65,7 @@ partial class HitStudent : Form
         int i = Array.IndexOf(args, "--selftest");
         selfTestOut = selfTest && i + 1 < args.Length ? args[i + 1] : Path.Combine(AppDir, "selftest.json");
 
-        Text = "SummarIT";
+        Text = "SumIT";
         ClientSize = new Size(1240, 820);
         MinimumSize = new Size(820, 620);
         StartPosition = FormStartPosition.CenterScreen;
@@ -281,7 +281,9 @@ partial class HitStudent : Form
     string StudyRoot { get { return Str(settings, "studyRoot"); } }
     string RecordingsDir { get { return Str(settings, "recordingsDir"); } }
     string NotabilityDir { get { return Str(settings, "notabilityDir"); } }
-    string Provider { get { return Str(settings, "aiProvider") == "gemini" ? "gemini" : "claude"; } }
+    // Gemini isn't reliable yet, so it is shown as "coming soon" and everything runs on Claude until it is.
+    static readonly bool GeminiEnabled = false;
+    string Provider { get { return GeminiEnabled && Str(settings, "aiProvider") == "gemini" ? "gemini" : "claude"; } }
 
     void SendSettings()
     {
@@ -401,6 +403,8 @@ partial class HitStudent : Form
             case "addFiles": AddFiles(course, Str(m, "folder")); break;
 
             // AI tasks
+            case "getNewMaterial": GetNewMaterial(course, m["sections"] as System.Collections.ArrayList, m["nums"] as System.Collections.ArrayList); break;
+            case "lecturePdf": LecturePdf(course, Int(m, "num"), Str(m, "title")); break;
             case "summarize": Summarize(course, Int(m, "num"), Str(m, "title")); break;
             case "analyzeCourse": AnalyzeCourse(course); break;
             case "examPrep": ExamPrep(course); break;
@@ -552,6 +556,8 @@ partial class HitStudent : Form
             Send(new { type = "moodle", state = ms, message = "" });
             if (full && ms == "ready") LoadHome();
             ImportAllNotability();
+            // Every few hours: anything new on Moodle in the courses that are set up? (Not while a course is downloading.)
+            if (ms == "ready" && Option("autoSync") && syncingCourses.Count == 0 && progressRange.Count == 0) { var check = BackgroundNewMaterialCheck(); }
         }
         catch { }
         finally { polling = false; }

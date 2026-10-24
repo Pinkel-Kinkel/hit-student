@@ -43,7 +43,7 @@ const IC = {
 };
 
 const ART = {
-  // SummarIT's own mascot: a student with dark hair, glasses, a hoodie and a graduation cap, giving a thumbs up.
+  // SumIT's own mascot: a student with dark hair, glasses, a hoodie and a graduation cap, giving a thumbs up.
   // The arm swings up (.mascot-arm) and a small gleam flashes on the smile (.mascot-gleam).
   // Its gradient / clip ids get a unique suffix per copy: with duplicate ids, a hidden copy "wins" and the others go blank.
   mascot: (cls = '') => ART._mascotSvg(cls).replace(/ms(Bg|Hood|Clip)/g, '$&' + (ART._mi = (ART._mi || 0) + 1)),

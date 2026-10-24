@@ -75,7 +75,7 @@ partial class HitStudent
     {
         using (var http = new System.Net.Http.HttpClient())
         {
-            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SummarIT/" + Version);
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SumIT/" + Version);
             http.Timeout = TimeSpan.FromMinutes(10);
             var index = json.Deserialize<List<Dictionary<string, object>>>(await http.GetStringAsync("https://nodejs.org/dist/index.json"));
             var lts = index.First(v => v["lts"] is string && Str(v, "version").Length > 0);
@@ -381,7 +381,7 @@ partial class HitStudent
         if (result.Error && IsUsageLimit(result.Text))
         {
             bool otherReady = provider == "claude"
-                ? FindGemini() != null && (Str(settings, "geminiKey").Length > 0 || GeminiGoogleSignedIn())
+                ? GeminiEnabled && FindGemini() != null && (Str(settings, "geminiKey").Length > 0 || GeminiGoogleSignedIn())
                 : FindClaude() != null;
             // With both connected and the "switch automatically" setting on, just carry on with the other one.
             if (otherReady && Option("autoFallback"))
@@ -753,12 +753,12 @@ partial class HitStudent
             Send(new { type = "learnStatus", course = course, busy = true, text = "קורא את הסילבוס..." });
             if (!File.Exists(Path.Combine(CourseDir(course), CourseJson))) await AnalyzeCourseAsync(course);
             var todo = sections.Cast<Dictionary<string, object>>()
-                .Where(s => Int(s, "num") > 0 && CountFiles(LectureDir(course, Int(s, "num"))) > 0 && !File.Exists(StudyPagePath(course, Int(s, "num"))))
+                .Where(s => Int(s, "num") > 0 && CountFiles(LectureDir(course, Int(s, "num"))) > 0 && !File.Exists(LecturePdfPath(course, Int(s, "num"))))
                 .ToList();
             for (int i = 0; i < todo.Count; i++)
             {
-                Send(new { type = "learnStatus", course = course, busy = true, text = "בונה דפי לימוד · שיעור " + Int(todo[i], "num") + " (" + (i + 1) + "/" + todo.Count + ")" });
-                var r = await SummarizeAsync(course, Int(todo[i], "num"), Str(todo[i], "title"));
+                Send(new { type = "learnStatus", course = course, busy = true, text = "מכין את הסיכום של הרצאה " + Int(todo[i], "num") + " (" + (i + 1) + " מתוך " + todo.Count + ")" });
+                var r = await LecturePdfAsync(course, Int(todo[i], "num"), Str(todo[i], "title"));
                 if (r != null && r.Limit) break;   // usage limit: stop, the rest can run later
             }
             if (CountFiles(Path.Combine(CourseDir(course), Exams)) > 0 && !File.Exists(Path.Combine(CourseDir(course), LecturerProfile)))
@@ -767,7 +767,7 @@ partial class HitStudent
                 await ExamPrepAsync(course);
             }
             Send(new { type = "learnStatus", course = course, busy = false, text = "" });
-            Notify("הקורס נלמד - כל דפי הלימוד מוכנים", course);
+            Notify("הקורס מוכן - הסיכומים של כל ההרצאות מחכים לך", course);
         }
         finally { learning.Remove(course); }
     }

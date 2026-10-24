@@ -357,6 +357,7 @@ return out;";
             }
             SaveMeta(name, meta);
             foreach (var s in sections) s["local"] = LocalInfo(name, Int(s, "num"));
+            CheckNewMaterial(name, sections, false);
             Send(new
             {
                 type = "course", id = id, name = name, folder = CourseDir(name), sections = sections,
@@ -410,7 +411,8 @@ return out;";
         return new
         {
             dir = dir, exists = Directory.Exists(dir), files = files, videos = videos, transcripts = transcripts,
-            studyPage = File.Exists(page) ? page : null, exercises = exercises, pointers = pointers
+            studyPage = File.Exists(page) ? page : null, exercises = exercises, pointers = pointers,
+            lecturePdf = File.Exists(LecturePdfPath(course, num)) ? LecturePdfPath(course, num) : null
         };
     }
 
@@ -428,6 +430,7 @@ return out;";
         {
             dir = dir, exists = Directory.Exists(dir), exams = CountFiles(Path.Combine(dir, Exams)), infoFiles = CountFiles(Path.Combine(dir, CourseInfoFolder)),
             notes = CountFiles(Path.Combine(dir, Notebook)), cs24 = CountFiles(Path.Combine(dir, Cs24Folder)), studyPages = pageCount, info = courseInfo,
+            lecturePdfs = Directory.Exists(Path.Combine(dir, LecturePdfs)) ? Directory.GetFiles(Path.Combine(dir, LecturePdfs), "*.pdf").Length : 0,
             examPrep = File.Exists(prep) ? prep : null, lecturerProfile = File.Exists(profile) ? profile : null,
             courseInfoMd = File.Exists(Path.Combine(dir, CourseInfoFolder + ".md")) ? Path.Combine(dir, CourseInfoFolder + ".md") : null,
             setupDone = Bool(LoadMeta(course), "setupDone"),
@@ -569,10 +572,14 @@ return out;";
         try
         {
             var list = sections.Cast<Dictionary<string, object>>().ToList();
+            // Progress is weighted by how many items each lesson has, so the bar moves evenly.
+            Func<Dictionary<string, object>, int> weight = s => 1 + (s.ContainsKey("items") && s["items"] is ArrayList ? ((ArrayList)s["items"]).Count : 0);
+            int total = list.Sum(weight), done = 0;
             for (int i = 0; i < list.Count; i++)
             {
-                Send(new { type = "courseStatus", course = course, busy = true, text = "מעדכן את חומרי הקורס מה-Moodle · " + (i + 1) + "/" + list.Count });
-                await SyncSectionAsync(course, list[i]);
+                int before = done;
+                await SyncSectionAsync(course, list[i], (k, item) => Progress(course, "מוריד מה-Moodle: " + Trunc(item, 70), (double)(before + 1 + k) / total));
+                done += weight(list[i]);
             }
             Send(new { type = "courseStatus", course = course, busy = false, text = "", synced = true });
         }
@@ -581,7 +588,7 @@ return out;";
 
     async void SyncSection(string course, Dictionary<string, object> section) { await SyncSectionAsync(course, section); }
 
-    async Task SyncSectionAsync(string course, Dictionary<string, object> section)
+    async Task SyncSectionAsync(string course, Dictionary<string, object> section, Action<int, string> onItem = null)
     {
         if (section == null) return;
         int num = Int(section, "num");
@@ -601,6 +608,7 @@ return out;";
                     var it = items[i];
                     string mod = Str(it, "mod"), name = Str(it, "name"), url = Str(it, "url");
                     SectionStatus(course, num, "מוריד " + (i + 1) + "/" + items.Count + ": " + name, true, false);
+                    if (onItem != null) onItem(i, name);
                     string target = TargetFor(course, num, mod, name);
                     bool keepImages = mod == "assign" || IsExercise(name);
                     try
@@ -652,6 +660,7 @@ return out;";
         finally
         {
             busySections.Remove(key);
+            RememberItems(course, items);
             SendSectionLocal(course, num);
             SendCourseLocal(course);
         }

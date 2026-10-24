@@ -38,6 +38,19 @@ partial class HitStudent
             string probe = await EvalUi("const r=[];for(const u of ['https://app.local/ui.html','https://app.local/../settings.json','https://app.local/%2e%2e/settings.json','https://app.local/browser-data/Local%20State']){try{const x=await fetch(u);r.push(x.status)}catch(e){r.push('blocked')}}return r;");
             check("UI can read only the web folder", probe.StartsWith("[200,") && !probe.Substring(5).Contains("200"), probe);
 
+            // The lecture PDF: a study page (with a closed solution) printed and joined into one file.
+            const string pdfCourse = "__בדיקת PDF";
+            try
+            {
+                string page = StudyPagePath(pdfCourse, 1);
+                Directory.CreateDirectory(Path.GetDirectoryName(page));
+                File.WriteAllText(page, "<!doctype html><html dir=\"rtl\"><head><meta charset=\"utf-8\"></head><body><h1>סיכום הרצאה 1</h1><p>F = ma</p>"
+                    + "<details><summary>פתרון</summary><p>a = 2</p></details></body></html>", new UTF8Encoding(false));
+                string pdf = await BuildLecturePdf(pdfCourse, 1);
+                check("Lecture PDF is built", pdf != null && new FileInfo(pdf).Length > 1000, pdf ?? "no PDF");
+            }
+            finally { try { Directory.Delete(CourseDir(pdfCourse), true); } catch { } }
+
             // Nothing listens on the network.
             var listeners = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Select(e => e.Port).ToList();
             report["listeningPortsOnMachine"] = listeners.Count;

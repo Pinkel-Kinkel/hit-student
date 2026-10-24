@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
-<title>SummarIT</title>
+<title>SumIT</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="splash" id="splash">
   <div class="box">
     <div class="logo" id="splashLogo"></div>
-    <b>SummarIT</b>
+    <b>SumIT</b>
     <small id="splashText">מכין את סביבת הלימוד שלך...</small>
     <div class="track"><i></i></div>
   </div>
@@ -21,7 +21,7 @@
   <nav class="side">
     <button class="brand" id="brand" title="מסך הבית">
       <div class="logo" id="navLogo"></div>
-      <div><b>SummarIT</b><small>כל הלימודים במקום אחד</small></div>
+      <div><b>SumIT</b><small>כל הלימודים במקום אחד</small></div>
     </button>
     <button class="nav-item active" data-view="home"><span class="ni" data-ic="home"></span><span class="nav-text">בית</span></button>
     <button class="nav-item" data-view="courses"><span class="ni" data-ic="book"></span><span class="nav-text">הקורסים שלי</span></button>
@@ -114,7 +114,7 @@
         </div>
         <div class="tabs" id="courseTabs">
           <button data-tab="setup">איך מתחילים<span class="badge" id="tabSetup"></span></button>
-          <button class="active" data-tab="lessons">שיעורים<span class="badge" id="tabLessons"></span></button>
+          <button class="active" data-tab="lessons">הרצאות<span class="badge" id="tabLessons"></span></button>
           <button data-tab="recs">הקלטות</button>
           <button data-tab="info">מידע על הקורס</button>
           <button data-tab="exams">הכנה למבחן<span class="badge" id="tabExams"></span></button>
@@ -210,14 +210,14 @@
             <select id="themeSelect" style="width:auto"><option value="system">לפי Windows</option><option value="light">בהיר</option><option value="dark">כהה</option></select>
           </div>
           <div class="setting">
-            <div class="grow"><b>הורדה אוטומטית</b><small>כשנכנסים לקורס, כל החומר החדש מה-Moodle יורד לבד לתיקייה של הקורס.</small></div>
+            <div class="grow"><b>התראה על חומר חדש</b><small>כל כמה שעות בודק אם המרצה העלה משהו חדש ל-Moodle, ושואל אותך אם להוריד ולעדכן את הסיכום.</small></div>
             <label class="toggle"><input type="checkbox" id="optSync"><span class="switch"></span></label>
           </div>
           <div class="setting">
             <div class="grow"><b>גם הקלטות</b><small>להוריד אוטומטית הקלטות Zoom שמופיעות בקורס (עם תמלול). הן גדולות, בערך 300MB לשיעור.</small></div>
             <label class="toggle"><input type="checkbox" id="optRec"><span class="switch"></span></label>
           </div>
-          <div class="setting">
+          <div class="setting" hidden>
             <div class="grow"><b>מעבר אוטומטי כשנגמרת המכסה</b><small>כש-Claude ו-Gemini מחוברים שניהם: כשנגמרת המכסה של המנוע הראשי, השני ממשיך לבד. את המנוע הראשי בוחרים בכרטיסים למעלה.</small></div>
             <label class="toggle"><input type="checkbox" id="optFallback"><span class="switch"></span></label>
           </div>
@@ -241,11 +241,11 @@
     <div class="art-top" id="wizArt"></div>
     <div class="content">
       <div class="step active" data-step="0">
-        <h1>ברוך הבא ל-SummarIT</h1>
+        <h1>ברוך הבא ל-SumIT</h1>
         <p class="lead">כל הקורסים, ההקלטות והסיכומים שלך במקום אחד. כמה צעדים קצרים, ואני מכין לך הכל.</p>
         <div class="check-row"><div class="ci" data-ic="book"></div><div class="grow"><b>מתחברים ל-Moodle של HIT</b><small>משם אני לוקח את כל הקורסים, המטלות וההקלטות</small></div></div>
         <div class="check-row"><div class="ci" data-ic="check"></div><div class="grow"><b>בוחרים את הקורסים של הסמסטר</b><small>ואני מוריד הכל לבד למחשב</small></div></div>
-        <div class="check-row"><div class="ci" data-ic="sparkles"></div><div class="grow"><b>מחברים מנוע חכם</b><small>Claude או Gemini (או שניהם), שבונים דפי לימוד ועוזרים בשיעורי בית</small></div></div>
+        <div class="check-row"><div class="ci" data-ic="sparkles"></div><div class="grow"><b>מחברים מנוע חכם</b><small>Claude, שמכין לך סיכום PDF לכל הרצאה עם שיעורי הבית (Gemini - בקרוב)</small></div></div>
       </div>
       <div class="step" data-step="1">
         <h1>התחברות ל-Moodle</h1>

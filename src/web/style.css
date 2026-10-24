@@ -551,3 +551,26 @@ html[data-theme=dark] .provider .pl.claude { background: #3b2216; color: #fdba74
 }
 @media (max-width: 1180px) { .course-body { grid-template-columns: 1fr; } .chat { position: static; height: 560px; } .home-grid { grid-template-columns: 1fr; } .hero .illus { display: none; } }
 @media (max-width: 860px) { nav.side { width: 70px; padding: 14px 10px; } nav.side .nav-text, .brand > div, .nav-label, .status-pill > span:last-child, .nav-item .count { display: none; } .nav-item, .status-pill { justify-content: center; padding: 0; } .status-pill { height: 40px; } .brand { padding: 4px 0 18px; justify-content: center; } .page { padding: 22px 18px; } .provider-cards { grid-template-columns: 1fr; } }
+
+/* Download progress */
+.status-bar .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-bar.has-progress { flex-wrap: wrap; }
+.status-bar .pct, .setup-progress .pct { font-variant-numeric: tabular-nums; }
+.bar { flex-basis: 100%; height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 18%, transparent); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .5s ease; }
+.bar.big { height: 12px; margin: 10px 0 8px; }
+.setup-progress { margin-top: 10px; padding: 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); display: grid; gap: 6px; }
+.setup-progress .now { font-size: 13px; min-height: 1.4em; }
+.setup-progress .tip { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0 6px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-size: 13.5px; line-height: 1.55; }
+.setup-progress .tip [data-ic] { flex: none; margin-top: 2px; }
+.setup-progress > button { justify-self: start; }
+
+/* New material on Moodle */
+.new-material { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 14px; border-radius: 14px; background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); animation: rise .35s var(--ease); }
+.new-material .qa-av { width: 40px; height: 40px; flex: none; }
+.new-material .grow { flex: 1; min-width: 180px; display: grid; gap: 2px; }
+.new-material small { color: var(--muted); }
+
+/* Gemini: coming soon */
+.provider.soon { opacity: .6; cursor: default; filter: grayscale(.4); }
+.provider.soon:hover { transform: none; box-shadow: none; }

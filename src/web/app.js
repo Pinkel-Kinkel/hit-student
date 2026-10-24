@@ -93,16 +93,14 @@ function showGeminiCode() {
 
 // Usage limit: a small friendly card instead of an error, with a one-click switch to the other AI.
 function showLimit(m) {
+  // Only Claude for now (Gemini is coming soon): say kindly when it will continue.
   if ($('limitCard')) return;
-  const other = m.provider === 'claude' ? 'gemini' : 'claude';
-  const otherName = other === 'gemini' ? 'Gemini' : 'Claude';
   const card = h(`<div class="overlay" id="limitCard"><div class="wizard" style="width:min(460px,100%)">
     <div class="art-top" style="height:150px">${ART.ai().replace('<svg', '<svg style="width:230px;height:140px"')}</div>
-    <div class="content"><h1 style="font-size:21px">${m.provider === 'claude' ? 'Claude' : 'Gemini'} צריך הפסקה קטנה ☕</h1>
-    <p class="lead">הגעת למגבלת השימוש לעכשיו${m.reset ? ' (מתאפס ב-' + esc(m.reset) + ')' : ''}. אפשר להמשיך מיד עם ${otherName}${m.otherReady ? '' : ', אחרי שמחברים אותו פעם אחת'}.</p>
-    <div class="foot"><div class="grow"></div><button class="ghost" data-x>אחר כך</button><button class="primary big" data-go>המשך עם ${otherName}</button></div></div></div></div>`);
+    <div class="content"><h1 style="font-size:21px">Claude צריך הפסקה קטנה ☕</h1>
+    <p class="lead">הגעת למגבלת השימוש לעכשיו${m.reset ? ' (מתאפס ב-' + esc(m.reset) + ')' : ''}. כל מה שכבר ירד נשמר, ואחרי האיפוס לוחצים שוב על "צור סיכום PDF" וממשיכים מאותה נקודה.</p>
+    <div class="foot"><div class="grow"></div><button class="primary big" data-x>הבנתי</button></div></div></div></div>`);
   card.querySelector('[data-x]').onclick = () => card.remove();
-  card.querySelector('[data-go]').onclick = () => { card.remove(); send({ type: 'setProvider', provider: other }); if (!m.otherReady) openWizard(1); else toast(`עברנו ל-${otherName}. אפשר לנסות שוב.`); };
   document.body.append(card);
 }
 
@@ -200,8 +198,12 @@ function bannerEl(text, action, fn, cls = '') {
 
 // ---------- Providers (settings + setup) ----------
 function providerCard(kind) {
+  // Gemini is "coming soon": shown, but it can't be picked or set up yet.
+  if (kind === 'gemini') return h(`<div class="provider soon" data-kind="gemini"><span class="chip tag">בקרוב</span>
+    <div class="ph"><span class="pl gemini" data-ic="gemini"></span><div><h3>Gemini</h3></div></div>
+    <p>חיבור עם חשבון Google (חינמי, או עם המנוי שלך) יגיע בקרוב. בינתיים הכל עובד עם Claude.</p></div>`);
   const a = S.ai || { claude: {}, gemini: {} };
-  const sel = (a.provider || S.settings.aiProvider || 'claude') === kind;
+  const sel = kind === 'claude';
   const c = kind === 'claude' ? a.claude || {} : a.gemini || {};
   const busy = a.setup && ((kind === 'claude' && a.setup.includes('claude')) || (kind === 'gemini' && /gemini|node/.test(a.setup)));
   let state, act = '';
@@ -353,14 +355,52 @@ $('allCourses').onclick = () => show('courses');
 })();
 
 // ---------- Courses ----------
+// The lecturer uploaded something since the last download: say what, and ask before downloading it.
+function renderNewMaterial() {
+  const old = $('newMaterial'); if (old) old.remove();
+  const items = S.course && S.newMaterial && S.newMaterial[S.course.name];
+  if (!items || !items.length || inSetup()) return;
+  const nums = [...new Set(items.map(i => i.num))];
+  const names = items.slice(0, 4).map(i => i.name).join(' · ') + (items.length > 4 ? ` ועוד ${items.length - 4}` : '');
+  const el = h(`<div class="new-material" id="newMaterial"><span class="qa-av">${ART.mascot('wave')}</span>
+    <div class="grow"><b>המרצה העלה ${items.length === 1 ? 'קובץ חדש' : items.length + ' קבצים חדשים'} ל-Moodle</b><small dir="auto"></small></div>
+    <div class="row"><button class="primary small"><span data-ic="download"></span>הורד ועדכן את הסיכום</button><button class="ghost small">לא עכשיו</button></div></div>`);
+  el.querySelector('small').textContent = names;
+  const [go, later] = el.querySelectorAll('button');
+  go.onclick = () => {
+    send({ type: 'getNewMaterial', course: S.course.name, sections: plainSections(), nums });
+    delete S.newMaterial[S.course.name]; el.remove();
+    toast('מוריד את החומר החדש, ואז אעדכן את הסיכום של ההרצאה.', { ms: 5000 });
+  };
+  later.onclick = () => { delete S.newMaterial[S.course.name]; el.remove(); };
+  icons(el);
+  $('courseStatus').before(el);
+}
+
+function markNewOnCard(name, count) {
+  const card = [...document.querySelectorAll('.course-card')].find(el => el.dataset.name === name);
+  if (!card || card.querySelector('.new-tag')) return;
+  const tag = h(`<span class="chip warn new-tag">${count} חדשים ב-Moodle</span>`);
+  card.querySelector('.meta').prepend(tag);
+}
+
+// A course that is downloading in the background shows its percent on its card.
+function markCourseCard(name, pct) {
+  const card = [...document.querySelectorAll('.course-card')].find(el => el.dataset.name === name);
+  if (!card) return;
+  let tag = card.querySelector('.dl-tag');
+  if (!tag) { tag = h('<span class="chip accent dl-tag"></span>'); card.querySelector('.meta').prepend(tag); }
+  tag.textContent = pct >= 100 ? 'מכין סיכומים...' : 'מוריד · ' + pct + '%';
+}
+
 function courseCard(c, i) {
   const L = c.local || {};
-  const pages = L.studyPages || 0;
+  const pages = L.lecturePdfs || L.studyPages || 0;
   const pct = Math.min(100, Math.round(pages * 100 / 13));
-  const el = h(`<button class="course-card" style="--i:${i}">
+  const el = h(`<button class="course-card" style="--i:${i}" data-name="${esc(c.name)}">
     <div class="band">${ART.band(c.id)}<span class="letter">${esc((c.name || '?').trim().charAt(0))}</span>${pages ? `<div class="ring" style="--p:${pct}" data-label="${pages}"></div>` : ''}</div>
     <div class="body"><div class="name" dir="auto">${esc(c.name)}</div><div class="muted" style="font-size:12px" dir="auto">${esc(c.category || '')}</div>
-    <div class="meta">${L.exists ? '<span class="chip ok">במחשב</span>' : '<span class="chip">עוד לא הורד</span>'}${pages ? `<span class="chip accent">${pages} דפי לימוד</span>` : ''}${L.exams ? `<span class="chip warn">${L.exams} מבחנים</span>` : ''}</div></div></button>`);
+    <div class="meta">${L.exists ? '<span class="chip ok">במחשב</span>' : '<span class="chip">עוד לא הורד</span>'}${pages ? `<span class="chip accent">${pages} ${L.lecturePdfs ? 'סיכומים' : 'דפי לימוד'}</span>` : ''}${L.exams ? `<span class="chip warn">${L.exams} מבחנים</span>` : ''}</div></div></button>`);
   el.onclick = () => openCourse(c);
   return el;
 }
@@ -578,6 +618,14 @@ const SETUP_Q = [
 
 function renderSetup() {
   const p = $('pane-setup'); p.innerHTML = '';
+  if ($('newMaterial')) $('newMaterial').remove();
+  // Downloading: only the progress, so it's the first thing the student sees.
+  if (S.setupRunning && S.setupRunning[S.course.name]) {
+    const box = h(`<div class="card pad-lg setup-step"><div class="qa-row now"><span class="qa-av">${ART.mascot('wave')}</span><div><div class="qa-q">מעולה! אני מוריד עכשיו את כל החומר של הקורס, ואז אכין סיכום PDF לכל הרצאה.</div></div></div></div>`);
+    box.append(setupProgressEl(S.course.name));
+    p.append(box);
+    return;
+  }
   // Until the course's lessons arrive from Moodle, just a short "getting ready" card.
   if (!S.sections.length) {
     p.append(h(`<div class="card pad-lg setup-step" style="text-align:center"><div style="width:120px;margin:0 auto 10px">${ART.mascot('wave').replace('<svg', '<svg style="width:120px;height:120px"')}</div>
@@ -620,7 +668,8 @@ function renderSetup() {
     qa.append(row);
     const ul = h('<div class="qa-body" style="display:grid;gap:8px"></div>');
     list.forEach(([ic, t]) => { const r = h(`<div class="check-row"><div class="ci" data-ic="${ic}"></div><div class="grow"><small style="color:var(--text);font-size:13.5px"></small></div></div>`); r.querySelector('small').textContent = t; ul.append(r); });
-    const go = h(`<button class="primary big" style="margin-top:8px">${busy ? '<span class="spinner"></span> מוריד ומכין...' : '<span data-ic="download"></span>הורד הכל והתחל להכין'}</button>`);
+    if (busy) { qa.append(setupProgressEl(S.course.name)); p.append(wrap); return; }
+    const go = h(`<button class="primary big" style="margin-top:8px"><span data-ic="download"></span>הורד הכל והתחל להכין</button>`);
     icons(go);
     go.disabled = !!busy;
     go.onclick = () => {
@@ -628,7 +677,7 @@ function renderSetup() {
       S.setupRunning = S.setupRunning || {}; S.setupRunning[S.course.name] = true;
       send({ type: 'setupRun', course: S.course.name, sections: plainSections(), cs24: !!ans.cs24Auto });
       renderSetup();
-      toast('מוריד את כל החומר. כשזה ייגמר אתחיל להכין את דפי הלימוד, ואפשר להמשיך לעבוד בינתיים.', { ms: 7000 });
+      toast('מוריד את כל החומר. אפשר בינתיים להגדיר קורס אחר.', { ms: 5000 });
     };
     const back = h('<button class="ghost" style="margin-top:8px">שנה תשובות</button>');
     back.onclick = () => { S.setupAns[S.course.name] = {}; renderSetup(); };
@@ -678,7 +727,7 @@ function renderRecs() {
   });
   lessonRecs.forEach(s => {
     const row = h(`<div class="check-row ok"><div class="ci" data-ic="check"></div><div class="grow"><b dir="auto"></b><small>הקלטה ותמלול</small></div><button class="small">פתח</button></div>`);
-    row.querySelector('b').textContent = 'שיעור ' + s.num + ' · ' + s.title;
+    row.querySelector('b').textContent = 'הרצאה ' + s.num + ' · ' + s.title;
     row.querySelector('button').onclick = () => send({ type: 'openPath', path: s.local.dir + '\\הקלטה' });
     list.querySelector('.rec-list').append(row);
   });
@@ -688,12 +737,12 @@ function renderRecs() {
 function renderCourseHeader() {
   const L = S.local || {};
   const n = S.sections.filter(s => s.num > 0 && s.items.length).length;
-  $('courseCount').textContent = n + ' שיעורים';
+  $('courseCount').textContent = n + ' הרצאות';
   $('tabLessons').textContent = n;
   $('tabExams').textContent = L.exams || 0;
   $('tabNotes').textContent = L.notes || 0;
-  $('courseReady').hidden = !L.studyPages;
-  $('courseReady').textContent = (L.studyPages || 0) + ' דפי לימוד מוכנים';
+  $('courseReady').hidden = !(L.lecturePdfs || L.studyPages);
+  $('courseReady').textContent = L.lecturePdfs ? L.lecturePdfs + ' סיכומי הרצאות מוכנים' : (L.studyPages || 0) + ' דפי לימוד מוכנים';
 }
 
 function renderLectures() {
@@ -719,7 +768,7 @@ function lectureEl(s) {
 function fillLecture(el, s) {
   const L = s.local || {};
   const course = S.course;
-  el.classList.toggle('ready', !!L.studyPage);
+  el.classList.toggle('ready', !!(L.lecturePdf || L.studyPage));
   el.querySelector('.num').textContent = s.num === 0 ? '★' : s.num;
   el.querySelector('.lecture-title').textContent = s.num === 0 ? 'כללי · ' + s.title : s.title;
   const files = s.items.filter(i => !['zoom', 'url', 'forum', 'quiz'].includes(i.mod)).length;
@@ -731,7 +780,8 @@ function fillLecture(el, s) {
   if (zooms) chips.push(`<span class="chip accent">${zooms} הקלטות</span>`);
   if (L.files) chips.push(`<span class="chip ok">במחשב · ${L.files}</span>`);
   if (L.videos) chips.push('<span class="chip ok">הקלטה במחשב</span>');
-  if (L.studyPage) chips.push('<span class="chip ok">דף לימוד מוכן ✓</span>');
+  if (L.lecturePdf) chips.push('<span class="chip ok">סיכום PDF מוכן ✓</span>');
+  else if (L.studyPage) chips.push('<span class="chip ok">דף לימוד מוכן ✓</span>');
   el.querySelector('.chips').innerHTML = chips.join('');
 
   const items = el.querySelector('.items');
@@ -747,13 +797,15 @@ function fillLecture(el, s) {
 
   const a = el.querySelector('.actions'); a.innerHTML = '';
   const btn = (ic, text, cls, fn, disabled) => { const b = h(`<button class="${cls}"><span data-ic="${ic}"></span>${text}</button>`); b.onclick = (e) => { e.stopPropagation(); fn(); }; b.disabled = !!disabled; a.append(b); return b; };
-  btn('download', 'הורד', L.files ? '' : 'primary', () => send({ type: 'syncSection', course: course.name, section: { num: s.num, title: s.title, items: s.items } }), s.busy);
+  btn('download', 'הורד', L.files ? 'ghost' : 'primary', () => send({ type: 'syncSection', course: course.name, section: { num: s.num, title: s.title, items: s.items } }), s.busy);
+  // The main thing per lecture: one PDF with the summary and the homework (how to answer, and where each question comes from).
   if (s.aiBusy) btn('x', 'עצור', 'danger', () => send({ type: 'cancelAi', key: `sum|${course.name}|${s.num}` }));
-  else btn('sparkles', L.studyPage ? 'בנה מחדש' : 'סכם את השיעור', L.studyPage || !L.files ? 'soft' : 'primary',
-    () => send({ type: 'summarize', course: course.name, num: s.num, title: s.title }), s.busy || !(L.files || L.transcripts));
-  if (L.studyPage) btn('external', 'פתח דף לימוד', 'primary', () => send({ type: 'openPath', path: L.studyPage }));
-  if (L.exercises || assigns) btn('exam', 'הכן לשיעורי הבית', 'soft', () => send({ type: 'homework', course: course.name, num: s.num, title: s.title }), s.busy || s.aiBusy || !L.exercises);
-  (L.pointers || []).forEach(p => btn('file', 'תרגיל עם מפנים: ' + esc(p.name.replace(' - מפנים', '')), '', () => send({ type: 'openPath', path: p.path })));
+  else if (s.num > 0 && L.lecturePdf) {
+    btn('file', 'פתח את הסיכום (PDF)', 'primary', () => send({ type: 'openPath', path: L.lecturePdf }));
+    btn('sparkles', 'צור מחדש', 'soft', () => send({ type: 'lecturePdf', course: course.name, num: s.num, title: s.title }), s.busy);
+  } else if (s.num > 0) btn('sparkles', 'צור סיכום PDF של ההרצאה', L.files || L.transcripts ? 'primary' : 'soft',
+    () => send({ type: 'lecturePdf', course: course.name, num: s.num, title: s.title }), s.busy || !(L.files || L.transcripts));
+  if (L.studyPage) btn('external', 'גרסה אינטראקטיבית', 'ghost', () => send({ type: 'openPath', path: L.studyPage }));
   btn('video', 'הוסף הקלטה', 'ghost', () => {
     if (el.querySelector('.rec-row')) return;
     const row = h(`<div class="row rec-row" style="margin-top:10px"><input type="text" class="ltr" placeholder="הדבק קישור להקלטת Zoom של השיעור" spellcheck="false"><button class="primary small">הורד</button></div>`);
@@ -779,11 +831,36 @@ function refreshSection(num) {
   if (el) fillLecture(el, s); else renderLectures();
 }
 
-function courseStatus(text, busy, error) {
+function courseStatus(text, busy, error, pct) {
   const b = $('courseStatus');
   b.hidden = !text;
-  b.className = 'status-bar' + (error ? ' error' : '');
-  b.innerHTML = (busy ? '<span class="spinner"></span>' : error ? IC.alert : '') + `<span dir="auto">${esc(text || '')}</span>`;
+  b.className = 'status-bar' + (error ? ' error' : '') + (pct != null && busy ? ' has-progress' : '');
+  b.innerHTML = (busy ? '<span class="spinner"></span>' : error ? IC.alert : '') + `<span dir="auto" class="grow">${esc(text || '')}</span>`
+    + (pct != null && busy ? `<b class="pct">${pct}%</b><div class="bar"><i style="width:${pct}%"></i></div>` : '');
+}
+
+// The setup screen while the course downloads: a big bar, what is happening now, and a nudge to use the time.
+function setupProgressEl(course) {
+  const p = (S.progress && S.progress[course]) || { pct: 0, text: 'מתחיל להוריד...' };
+  const el = h(`<div class="setup-progress" id="setupProgress">
+    <div class="row"><b class="grow">מוריד את החומר של הקורס</b><b class="pct">${p.pct}%</b></div>
+    <div class="bar big"><i style="width:${p.pct}%"></i></div>
+    <div class="muted now" dir="auto"></div>
+    <div class="tip"><span data-ic="sparkles"></span><div><b>זה לוקח כמה דקות, וזה בסדר.</b><br>בינתיים אפשר להתחיל את אותו תהליך בקורס אחר, וההורדה כאן תמשיך ברקע. כשהכל יהיה מוכן אשלח לך הודעה.</div></div>
+    <button class="primary" id="otherCourse"><span data-ic="book"></span>בינתיים, לקורס הבא</button></div>`);
+  el.querySelector('.now').textContent = p.text;
+  el.querySelector('#otherCourse').onclick = () => show('courses');
+  icons(el);
+  return el;
+}
+
+function updateSetupProgress(course) {
+  const el = $('setupProgress');
+  if (!el || !S.course || S.course.name !== course) return;
+  const p = S.progress[course];
+  el.querySelector('.pct').textContent = p.pct + '%';
+  el.querySelector('.bar i').style.width = p.pct + '%';
+  el.querySelector('.now').textContent = p.text;
 }
 
 function renderInfo() {
@@ -890,7 +967,7 @@ S.chatScope = 'course';
 S.chatLogs = {};
 function scopeTitle(scope) {
   if (scope === 'exam') return 'אימון למבחן';
-  if (scope.startsWith('lesson:')) return 'שיעור ' + scope.slice(7);
+  if (scope.startsWith('lesson:')) return 'הרצאה ' + scope.slice(7);
   return 'כל הקורס';
 }
 function setChatScope(scope) {
@@ -1036,13 +1113,13 @@ function renderSettings() {
   const st = S.settings;
   $('studyRoot').textContent = st.studyRoot; $('recDir').textContent = st.recordingsDir;
   $('notabilityDir').textContent = st.notabilityDir || 'לא נבחרה';
-  $('versionText').textContent = 'SummarIT ' + (st.version || '');
+  $('versionText').textContent = 'SumIT ' + (st.version || '');
   $('wizStudy').textContent = st.studyRoot;
   $('wizNot').textContent = st.notabilityDir || 'אם Notability מגבה את המחברות לתיקייה במחשב, בחר אותה כאן';
   $('wizNotRow').classList.toggle('ok', !!st.notabilityDir);
   $('optFallback').checked = st.autoFallback !== false;
   $('optSync').checked = st.autoSync !== false; $('optRec').checked = st.autoRecordings !== false; $('optUpdate').checked = st.autoUpdate !== false;
-  $('versionText').textContent = `SummarIT ${st.version || ''} · מתעדכנת לבד כשיוצאת גרסה חדשה`;
+  $('versionText').textContent = `SumIT ${st.version || ''} · מתעדכנת לבד כשיוצאת גרסה חדשה`;
   applyTheme(st.theme || 'system');
 }
 $('changeStudy').onclick = $('wizStudyBtn').onclick = () => send({ type: 'chooseFolder', which: 'study' });
@@ -1157,8 +1234,8 @@ function onMessage(m) {
       // A course that hasn't been set up yet shows only the setup questions; afterwards the lessons.
       if (inSetup()) applySetupMode();
       else { applySetupMode(); if (!m.cached || S.tab === 'setup') setTab(S.tab === 'setup' || !S.tab ? 'lessons' : S.tab); }
-      // Once a course is set up, new material is pulled from Moodle whenever it opens.
-      if (!m.cached && !inSetup() && S.settings.autoSync !== false) syncCourse(true);
+      // Once a course is set up, new material on Moodle shows up as a question (the app sends newMaterial).
+      if (!m.cached) renderNewMaterial();
       break;
     }
     case 'learnStatus':
@@ -1194,9 +1271,19 @@ function onMessage(m) {
       if (S.tab !== 'lessons') setTab(S.tab);
       if (S.courses) { const c = S.courses.find(x => x.name === m.course); if (c) c.local = m.local; }
       break;
+    case 'newMaterial': {
+      S.newMaterial = S.newMaterial || {};
+      S.newMaterial[m.course] = m.items;
+      if (S.courses) markNewOnCard(m.course, m.items.length);
+      if (S.course && S.course.name === m.course) renderNewMaterial();
+      break;
+    }
     case 'courseStatus':
+      if (m.pct != null) { S.progress = S.progress || {}; S.progress[m.course] = { pct: m.pct, text: m.text }; }
+      if (m.setup && S.courses) markCourseCard(m.course, m.pct);
       if (!S.course || S.course.name !== m.course) break;
-      courseStatus(m.text, m.busy, m.error);
+      if (m.setup && $('setupProgress')) { updateSetupProgress(m.course); break; }
+      courseStatus(m.text, m.busy, m.error, m.pct);
       if (!m.busy) { S.infoBusy = false; S.examBusy = false; if (S.tab !== 'lessons') setTab(S.tab); }
       // After the setup questions: everything is downloaded, so start preparing the study material.
       if (m.synced && S.learnAfterSync && S.learnAfterSync[m.course]) {

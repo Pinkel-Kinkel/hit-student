@@ -105,16 +105,32 @@ return f ? (f.getAttribute('src') || f.getAttribute('href')) : '';", 8000);
     }
 
     readonly HashSet<string> cs24Running = new HashSet<string>();
+    // There is one hidden CS24 browser, so courses take turns; Moodle downloads of other courses carry on meanwhile.
+    readonly System.Threading.SemaphoreSlim cs24Lock = new System.Threading.SemaphoreSlim(1, 1);
+
+    // While a course is being set up, its downloads share one progress bar: Moodle first, then CS24.
+    readonly Dictionary<string, double[]> progressRange = new Dictionary<string, double[]>();
+
+    void Progress(string course, string text, double fraction)
+    {
+        double[] r;
+        if (!progressRange.TryGetValue(course, out r)) r = new[] { 0.0, 1.0 };
+        int pct = (int)Math.Round(100 * (r[0] + (r[1] - r[0]) * Math.Max(0, Math.Min(1, fraction))));
+        Send(new { type = "courseStatus", course = course, busy = true, text = text, pct = pct, setup = progressRange.ContainsKey(course) });
+    }
 
     // Downloads the whole CS24 folder of a course: exams/quizzes into "מבחנים\CS24", everything else into "CS24".
     async Task<int> Cs24SyncCourse(string course)
     {
         if (!cs24Running.Add(course)) return 0;
         int saved = 0;
+        bool locked = false;
         try
         {
-            Action<string> status = t => Send(new { type = "courseStatus", course = course, busy = true, text = t });
-            status("מחפש את הקורס ב-CS24...");
+            if (cs24Lock.CurrentCount == 0) Progress(course, "מחכה לתורו ב-CS24 (קורס אחר מוריד משם עכשיו)...", 0);
+            await cs24Lock.WaitAsync();
+            locked = true;
+            Progress(course, "מחפש את הקורס ב-CS24...", 0);
             var folder = await Cs24FindCourse(course);
             if (folder == null)
             {
@@ -128,11 +144,14 @@ return f ? (f.getAttribute('src') || f.getAttribute('href')) : '';", 8000);
             // Walk the folder tree (breadth first, a few levels deep) and collect the file pages.
             var files = new List<Tuple<string, Cs24Entry>>();
             var queue = new Queue<Tuple<string, Cs24Entry, int>>();
+            int visited = 0;
             queue.Enqueue(Tuple.Create("", folder, 0));
             while (queue.Count > 0 && files.Count < Cs24MaxFiles)
             {
                 var cur = queue.Dequeue();
-                status("קורא את התיקייה ב-CS24: " + (cur.Item1.Length > 0 ? cur.Item1 : folder.Name));
+                visited++;
+                // Listing the folders is about a tenth of the work; the downloads are the rest.
+                Progress(course, "בודק מה יש ב-CS24: " + Trunc(cur.Item1.Length > 0 ? cur.Item1 : folder.Name, 60), 0.1 * visited / (visited + queue.Count + 1));
                 foreach (var e in await Cs24List(cur.Item2.Href))
                 {
                     string rel = cur.Item1.Length > 0 ? cur.Item1 + "\\" + SafeName(e.Name) : SafeName(e.Name);
@@ -143,12 +162,12 @@ return f ? (f.getAttribute('src') || f.getAttribute('href')) : '';", 8000);
 
             using (var http = new HttpClient())
             {
-                http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SummarIT/" + Version);
+                http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SumIT/" + Version);
                 http.Timeout = TimeSpan.FromMinutes(10);
                 for (int i = 0; i < files.Count; i++)
                 {
                     var f = files[i];
-                    status("מוריד מ-CS24 · " + (i + 1) + "/" + files.Count + " · " + Trunc(f.Item2.Name, 50));
+                    Progress(course, "מוריד מ-CS24 (" + (i + 1) + " מתוך " + files.Count + "): " + Trunc(f.Item2.Name, 50), 0.1 + 0.9 * i / files.Count);
                     try
                     {
                         string asset = await Cs24FileUrl(f.Item2.Href);
@@ -182,6 +201,7 @@ return f ? (f.getAttribute('src') || f.getAttribute('href')) : '';", 8000);
         finally
         {
             cs24Running.Remove(course);
+            if (locked) cs24Lock.Release();
             if (cs24View.CoreWebView2 != null) cs24View.CoreWebView2.Navigate("about:blank");
             SendCourseLocal(course);
         }
@@ -197,8 +217,17 @@ return f ? (f.getAttribute('src') || f.getAttribute('href')) : '';", 8000);
         meta["setupDone"] = true;
         SaveMeta(course, meta);
         Send(new { type = "setupRun", course = course, busy = true });
-        await SyncCourseAsync(course, sections);
-        if (cs24) await Cs24SyncCourse(course);
+        try
+        {
+            progressRange[course] = new[] { 0.0, cs24 ? 0.3 : 1.0 };
+            await SyncCourseAsync(course, sections);
+            if (cs24)
+            {
+                progressRange[course] = new[] { 0.3, 1.0 };
+                await Cs24SyncCourse(course);
+            }
+        }
+        finally { progressRange.Remove(course); }
         Send(new { type = "setupRun", course = course, busy = false });
         LearnCourse(course, sections);
     }
