@@ -15,7 +15,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 partial class HitStudent : Form
 {
-    public const string Version = "2.8.0";
+    public const string Version = "2.8.1";
     const string Repo = "Pinkel-Kinkel/hit-student";
     // Updates are only accepted from these repositories (the project was renamed from hit-recordings).
     static readonly string[] RepoNames = { "Pinkel-Kinkel/hit-student", "Pinkel-Kinkel/hit-recordings" };
@@ -101,8 +101,18 @@ partial class HitStudent : Form
         CleanUpOldFiles();
         Load += async delegate { await InitAsync(); };
         Activated += delegate { CheckClipboard(false); };
-        FormClosing += delegate { foreach (var p in aiRuns.Values.ToList()) KillTree(p); };
-        statusTimer.Tick += async delegate { await PollStatus(false); };
+        FormClosing += delegate
+        {
+            foreach (var p in aiRuns.Values.ToList()) KillTree(p);
+            // A downloaded update is put in place on the way out, so the next start is the new version.
+            if (stagedUpdateDir != null && !restartingForUpdate) ApplyUpdate(false);
+        };
+        statusTimer.Tick += async delegate
+        {
+            await PollStatus(false);
+            // The app often stays open for days: look for a new version every few hours, not only at start.
+            if (DateTime.Now - lastUpdateCheck > TimeSpan.FromHours(4)) CheckForUpdate();
+        };
     }
 
     Panel LoginPanel(WebView2 view, string hint, EventHandler back)
@@ -568,10 +578,13 @@ partial class HitStudent : Form
     // swaps its own files (a running .exe/.dll can be renamed, so the old ones become *.old) and restarts.
 
     string updateVersion, updateZipUrl, updateShaUrl, updatePage, stagedUpdateDir;
-    bool updating;
+    bool updating, restartingForUpdate;
+    DateTime lastUpdateCheck = DateTime.MinValue;
 
     async void CheckForUpdate()
     {
+        lastUpdateCheck = DateTime.Now;
+        if (stagedUpdateDir != null || updating) return;
         try
         {
             using (var http = new HttpClient())
@@ -644,7 +657,11 @@ partial class HitStudent : Form
         updating = false;
     }
 
-    void RestartIntoUpdate()
+    void RestartIntoUpdate() { ApplyUpdate(true); }
+
+    // Copies the staged version over the app's files (the running exe and dlls are renamed to .old first,
+    // which Windows allows), then restarts, or just leaves it for the next start.
+    void ApplyUpdate(bool restart)
     {
         if (stagedUpdateDir == null) return;
         try
@@ -663,10 +680,13 @@ partial class HitStudent : Form
                 }
                 File.Copy(f, target);
             }
+            stagedUpdateDir = null;
+            if (!restart) return;
+            restartingForUpdate = true;
             Process.Start(new ProcessStartInfo(Path.Combine(AppDir, "HitStudent.exe")) { UseShellExecute = false, WorkingDirectory = AppDir });
             Close();
         }
-        catch (Exception ex) { Toast("העדכון נכשל: " + ex.Message, true); }
+        catch (Exception ex) { if (restart) Toast("העדכון נכשל: " + ex.Message, true); }
     }
 
     static void CleanUpOldFiles()
